@@ -1,0 +1,343 @@
+
+DROP DATABASE IF EXISTS plataforma_educativa;
+CREATE DATABASE plataforma_educativa
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE plataforma_educativa;
+
+SET FOREIGN_KEY_CHECKS = 0;
+
+-- =====================================================================
+-- 1. ROL / USUARIO / USUARIO_ROL
+-- =====================================================================
+
+CREATE TABLE ROL (
+  id      INT AUTO_INCREMENT PRIMARY KEY,
+  nombre  VARCHAR(50) NOT NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE USUARIO (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  nombre      VARCHAR(150) NOT NULL,
+  email       VARCHAR(150) NOT NULL,
+  contrasena  VARCHAR(255) NOT NULL,
+  estado      VARCHAR(20)  NOT NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE USUARIO_ROL (
+  usuario_id  INT NOT NULL,
+  rol_id      INT NOT NULL,
+  PRIMARY KEY (usuario_id, rol_id),
+  CONSTRAINT fk_usuario_rol_usuario FOREIGN KEY (usuario_id) REFERENCES USUARIO(id),
+  CONSTRAINT fk_usuario_rol_rol     FOREIGN KEY (rol_id)     REFERENCES ROL(id)
+) ENGINE=InnoDB;
+
+-- =====================================================================
+-- 2. ALUMNO / ALUMNO_APODERADO
+-- =====================================================================
+
+CREATE TABLE ALUMNO (
+  id                INT AUTO_INCREMENT PRIMARY KEY,
+  usuario_id        INT NOT NULL,
+  fecha_nacimiento  DATE NOT NULL,
+  CONSTRAINT fk_alumno_usuario FOREIGN KEY (usuario_id) REFERENCES USUARIO(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE ALUMNO_APODERADO (
+  alumno_id             INT NOT NULL,
+  apoderado_usuario_id  INT NOT NULL,
+  PRIMARY KEY (alumno_id, apoderado_usuario_id),
+  CONSTRAINT fk_aa_alumno    FOREIGN KEY (alumno_id)            REFERENCES ALUMNO(id),
+  CONSTRAINT fk_aa_apoderado FOREIGN KEY (apoderado_usuario_id) REFERENCES USUARIO(id)
+) ENGINE=InnoDB;
+
+-- =====================================================================
+-- 3. CURSO
+-- =====================================================================
+
+CREATE TABLE CURSO (
+  id                    INT AUTO_INCREMENT PRIMARY KEY,
+  nombre                VARCHAR(100) NOT NULL,
+  nivel                 VARCHAR(50)  NOT NULL,
+  profesor_usuario_id   INT NOT NULL,
+  CONSTRAINT fk_curso_profesor FOREIGN KEY (profesor_usuario_id) REFERENCES USUARIO(id)
+) ENGINE=InnoDB;
+
+-- =====================================================================
+-- 4. ACTIVIDAD / PREGUNTA / ENTREGA
+-- =====================================================================
+
+CREATE TABLE ACTIVIDAD (
+  id                    INT AUTO_INCREMENT PRIMARY KEY,
+  curso_id              INT NOT NULL,
+  profesor_usuario_id   INT NOT NULL,
+  titulo                VARCHAR(150) NOT NULL,
+  descripcion           TEXT,
+  fecha_entrega         DATE NOT NULL,
+  ponderacion           DECIMAL(5,2) NOT NULL,
+  CONSTRAINT fk_actividad_curso    FOREIGN KEY (curso_id)            REFERENCES CURSO(id),
+  CONSTRAINT fk_actividad_profesor FOREIGN KEY (profesor_usuario_id) REFERENCES USUARIO(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE PREGUNTA (
+  id                    INT AUTO_INCREMENT PRIMARY KEY,
+  actividad_id          INT NOT NULL,
+  enunciado             TEXT NOT NULL,
+  tipo                  VARCHAR(30) NOT NULL,
+  opciones              TEXT,
+  respuesta_correcta    TEXT NOT NULL,
+  puntaje               DECIMAL(5,2) NOT NULL,
+  CONSTRAINT fk_pregunta_actividad FOREIGN KEY (actividad_id) REFERENCES ACTIVIDAD(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE ENTREGA (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  actividad_id   INT NOT NULL,
+  alumno_id      INT NOT NULL,
+  fecha_entrega  DATE NOT NULL,
+  archivo        VARCHAR(255),
+  calificacion   DECIMAL(4,2),
+  comentarios    TEXT,
+  CONSTRAINT fk_entrega_actividad FOREIGN KEY (actividad_id) REFERENCES ACTIVIDAD(id),
+  CONSTRAINT fk_entrega_alumno    FOREIGN KEY (alumno_id)    REFERENCES ALUMNO(id)
+) ENGINE=InnoDB;
+
+-- =====================================================================
+-- 5. CONVERSACION / PARTICIPANTE_CONVERSACION / MENSAJE
+-- =====================================================================
+
+CREATE TABLE CONVERSACION (
+  id               INT AUTO_INCREMENT PRIMARY KEY,
+  asunto           VARCHAR(150) NOT NULL,
+  fecha_creacion   DATETIME NOT NULL,
+  estado           VARCHAR(20) NOT NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE PARTICIPANTE_CONVERSACION (
+  conversacion_id  INT NOT NULL,
+  usuario_id       INT NOT NULL,
+  fecha_union      DATETIME NOT NULL,
+  PRIMARY KEY (conversacion_id, usuario_id),
+  CONSTRAINT fk_pc_conversacion FOREIGN KEY (conversacion_id) REFERENCES CONVERSACION(id),
+  CONSTRAINT fk_pc_usuario      FOREIGN KEY (usuario_id)      REFERENCES USUARIO(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE MENSAJE (
+  id                     INT AUTO_INCREMENT PRIMARY KEY,
+  conversacion_id        INT NOT NULL,
+  remitente_usuario_id   INT NOT NULL,
+  contenido              TEXT NOT NULL,
+  fecha_envio            DATETIME NOT NULL,
+  leido                  BOOLEAN NOT NULL,
+  CONSTRAINT fk_mensaje_conversacion FOREIGN KEY (conversacion_id)      REFERENCES CONVERSACION(id),
+  CONSTRAINT fk_mensaje_remitente    FOREIGN KEY (remitente_usuario_id) REFERENCES USUARIO(id)
+) ENGINE=InnoDB;
+
+-- =====================================================================
+-- 6. NOTIFICACION
+-- =====================================================================
+
+CREATE TABLE NOTIFICACION (
+  id               INT AUTO_INCREMENT PRIMARY KEY,
+  usuario_id       INT NOT NULL,
+  tipo             VARCHAR(40) NOT NULL,
+  titulo           VARCHAR(150) NOT NULL,
+  contenido        TEXT,
+  fecha_creacion   DATETIME NOT NULL,
+  fecha_lectura    DATETIME,
+  estado           VARCHAR(20) NOT NULL,
+  CONSTRAINT fk_notificacion_usuario FOREIGN KEY (usuario_id) REFERENCES USUARIO(id)
+) ENGINE=InnoDB;
+
+-- =====================================================================
+-- 7. INTERACCION_ACTIVIDAD
+-- =====================================================================
+
+CREATE TABLE INTERACCION_ACTIVIDAD (
+  id                 INT AUTO_INCREMENT PRIMARY KEY,
+  actividad_id       INT NOT NULL,
+  usuario_id         INT NOT NULL,
+  tipo_interaccion   VARCHAR(40) NOT NULL,
+  detalle            TEXT,
+  fecha_hora         DATETIME NOT NULL,
+  CONSTRAINT fk_interaccion_actividad FOREIGN KEY (actividad_id) REFERENCES ACTIVIDAD(id),
+  CONSTRAINT fk_interaccion_usuario   FOREIGN KEY (usuario_id)   REFERENCES USUARIO(id)
+) ENGINE=InnoDB;
+
+-- =====================================================================
+-- 8. FORO / TEMA_FORO / COMENTARIO_FORO
+-- =====================================================================
+
+CREATE TABLE FORO (
+  id               INT AUTO_INCREMENT PRIMARY KEY,
+  nombre           VARCHAR(150) NOT NULL,
+  descripcion      TEXT,
+  fecha_creacion   DATETIME NOT NULL,
+  estado           VARCHAR(20) NOT NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE TEMA_FORO (
+  id                  INT AUTO_INCREMENT PRIMARY KEY,
+  foro_id             INT NOT NULL,
+  autor_usuario_id    INT NOT NULL,
+  titulo              VARCHAR(150) NOT NULL,
+  contenido           TEXT NOT NULL,
+  fecha_creacion      DATETIME NOT NULL,
+  estado              VARCHAR(20) NOT NULL,
+  CONSTRAINT fk_tema_foro   FOREIGN KEY (foro_id)          REFERENCES FORO(id),
+  CONSTRAINT fk_tema_autor  FOREIGN KEY (autor_usuario_id) REFERENCES USUARIO(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE COMENTARIO_FORO (
+  id                  INT AUTO_INCREMENT PRIMARY KEY,
+  tema_id             INT NOT NULL,
+  autor_usuario_id    INT NOT NULL,
+  contenido           TEXT NOT NULL,
+  fecha_creacion      DATETIME NOT NULL,
+  fecha_edicion       DATETIME,
+  estado              VARCHAR(20) NOT NULL,
+  CONSTRAINT fk_comentario_tema  FOREIGN KEY (tema_id)          REFERENCES TEMA_FORO(id),
+  CONSTRAINT fk_comentario_autor FOREIGN KEY (autor_usuario_id) REFERENCES USUARIO(id)
+) ENGINE=InnoDB;
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+-- =====================================================================
+-- DATOS DE PRUEBA
+-- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- ROL
+-- ---------------------------------------------------------------------
+INSERT INTO ROL (nombre) VALUES
+  ('ADMINISTRADOR'),
+  ('PROFESOR'),
+  ('APODERADO'),
+  ('ALUMNO');
+
+-- ---------------------------------------------------------------------
+-- USUARIO
+-- (contrasena = hash ficticio de ejemplo, solo para pruebas)
+-- ---------------------------------------------------------------------
+INSERT INTO USUARIO (nombre, email, contrasena, estado) VALUES
+  ('Marco Palma',            'marco.palma@duocuc.cl',        '$2b$12$examplehash0000000000000000000000000000000000000001', 'ACTIVO'), -- id 1: administrador del sistema
+  ('Carolina Muñoz',         'carolina.munoz@colegio.cl',    '$2b$12$examplehash0000000000000000000000000000000000000002', 'ACTIVO'), -- id 2: profesora
+  ('Felipe Rojas',           'felipe.rojas@colegio.cl',      '$2b$12$examplehash0000000000000000000000000000000000000003', 'ACTIVO'), -- id 3: profesor
+  ('Daniela Soto',           'daniela.soto@gmail.com',       '$2b$12$examplehash0000000000000000000000000000000000000004', 'ACTIVO'), -- id 4: apoderada
+  ('Rodrigo Fuentes',        'rodrigo.fuentes@gmail.com',    '$2b$12$examplehash0000000000000000000000000000000000000005', 'ACTIVO'), -- id 5: apoderado
+  ('Javiera Contreras',      'javiera.contreras@gmail.com',  '$2b$12$examplehash0000000000000000000000000000000000000006', 'ACTIVO'), -- id 6: apoderada
+  ('Martina Fuentes',        'martina.fuentes@colegio.cl',   '$2b$12$examplehash0000000000000000000000000000000000000007', 'ACTIVO'), -- id 7: alumna
+  ('Benjamín Soto',          'benjamin.soto@colegio.cl',     '$2b$12$examplehash0000000000000000000000000000000000000008', 'ACTIVO'), -- id 8: alumno
+  ('Antonia Rojas',          'antonia.rojas@colegio.cl',     '$2b$12$examplehash0000000000000000000000000000000000000009', 'ACTIVO'), -- id 9: alumna
+  ('Vicente Contreras',      'vicente.contreras@colegio.cl', '$2b$12$examplehash0000000000000000000000000000000000000010', 'ACTIVO'); -- id 10: alumno
+
+-- ---------------------------------------------------------------------
+-- USUARIO_ROL
+-- ---------------------------------------------------------------------
+INSERT INTO USUARIO_ROL (usuario_id, rol_id) VALUES
+  (1, (SELECT id FROM ROL WHERE nombre = 'ADMINISTRADOR')),
+  (2, (SELECT id FROM ROL WHERE nombre = 'PROFESOR')),
+  (3, (SELECT id FROM ROL WHERE nombre = 'PROFESOR')),
+  (4, (SELECT id FROM ROL WHERE nombre = 'APODERADO')),
+  (5, (SELECT id FROM ROL WHERE nombre = 'APODERADO')),
+  (6, (SELECT id FROM ROL WHERE nombre = 'APODERADO')),
+  (7, (SELECT id FROM ROL WHERE nombre = 'ALUMNO')),
+  (8, (SELECT id FROM ROL WHERE nombre = 'ALUMNO')),
+  (9, (SELECT id FROM ROL WHERE nombre = 'ALUMNO')),
+  (10, (SELECT id FROM ROL WHERE nombre = 'ALUMNO'));
+
+-- ---------------------------------------------------------------------
+-- ALUMNO
+-- ---------------------------------------------------------------------
+INSERT INTO ALUMNO (usuario_id, fecha_nacimiento) VALUES
+  (7,  '2018-03-12'), -- Martina Fuentes   -> alumno.id 1
+  (8,  '2018-07-25'), -- Benjamín Soto     -> alumno.id 2
+  (9,  '2017-11-02'), -- Antonia Rojas     -> alumno.id 3
+  (10, '2018-01-19'); -- Vicente Contreras -> alumno.id 4
+
+-- ---------------------------------------------------------------------
+-- ALUMNO_APODERADO
+-- ---------------------------------------------------------------------
+INSERT INTO ALUMNO_APODERADO (alumno_id, apoderado_usuario_id) VALUES
+  (1, 5), -- Martina Fuentes    -> apoderado Rodrigo Fuentes
+  (2, 4), -- Benjamín Soto      -> apoderada Daniela Soto
+  (3, 6), -- Antonia Rojas      -> apoderada Javiera Contreras
+  (4, 6); -- Vicente Contreras  -> apoderada Javiera Contreras (dos hijos)
+
+-- ---------------------------------------------------------------------
+-- CURSO
+-- ---------------------------------------------------------------------
+INSERT INTO CURSO (nombre, nivel, profesor_usuario_id) VALUES
+  ('3° Básico A', '3basico', 2), -- Carolina Muñoz
+  ('4° Básico B', '4basico', 3); -- Felipe Rojas
+
+-- ---------------------------------------------------------------------
+-- ACTIVIDAD
+-- ---------------------------------------------------------------------
+INSERT INTO ACTIVIDAD (curso_id, profesor_usuario_id, titulo, descripcion, fecha_entrega, ponderacion) VALUES
+  (1, 2, 'Sumas y restas hasta el 1000', 'Actividad del banco curricular de Matemática, OA5 de 3° básico.', '2026-09-15', 20.00),
+  (1, 2, 'Comprensión de lectura: El bosque encantado', 'Actividad del banco curricular de Lenguaje, OA3 de 3° básico.', '2026-09-20', 15.00),
+  (2, 3, 'Fracciones simples', 'Actividad del banco curricular de Matemática, OA8 de 4° básico.', '2026-09-18', 20.00);
+
+-- ---------------------------------------------------------------------
+-- PREGUNTA
+-- (opciones y respuesta_correcta se guardan como texto plano,
+--  tal como se definió en el diagrama original)
+-- ---------------------------------------------------------------------
+INSERT INTO PREGUNTA (actividad_id, enunciado, tipo, opciones, respuesta_correcta, puntaje) VALUES
+  (1, '¿Cuánto es 350 + 420?', 'seleccion_multiple', '670;770;870;970', '770', 2.00),
+  (1, '¿Cuánto es 900 - 260?', 'seleccion_multiple', '540;640;740;840', '640', 2.00),
+  (2, '¿Cuál era el problema principal del bosque encantado en el cuento?', 'seleccion_multiple', 'La sequía;La tala de árboles;Un incendio;La nieve', 'La tala de árboles', 2.00),
+  (3, '¿Qué fracción representa la mitad de una pizza?', 'seleccion_multiple', '1/4;1/2;2/3;3/4', '1/2', 2.00);
+
+-- ---------------------------------------------------------------------
+-- ENTREGA
+-- ---------------------------------------------------------------------
+INSERT INTO ENTREGA (actividad_id, alumno_id, fecha_entrega, archivo, calificacion, comentarios) VALUES
+  (1, 1, '2026-09-14', NULL, 6.20, 'Buen manejo de sumas con reserva.'),
+  (1, 2, '2026-09-15', NULL, 5.50, 'Revisar restas con reserva.'),
+  (2, 1, '2026-09-19', NULL, 6.80, 'Excelente comprensión lectora.'),
+  (3, 3, '2026-09-17', NULL, NULL, NULL); -- entregada, aún sin calificar
+
+-- ---------------------------------------------------------------------
+-- CONVERSACION / PARTICIPANTE_CONVERSACION / MENSAJE
+-- ---------------------------------------------------------------------
+INSERT INTO CONVERSACION (asunto, fecha_creacion, estado) VALUES
+  ('Avance de Martina en Matemática', '2026-09-10 09:00:00', 'ABIERTA');
+
+INSERT INTO PARTICIPANTE_CONVERSACION (conversacion_id, usuario_id, fecha_union) VALUES
+  (1, 2, '2026-09-10 09:00:00'), -- profesora Carolina Muñoz
+  (1, 5, '2026-09-10 09:05:00'); -- apoderado Rodrigo Fuentes
+
+INSERT INTO MENSAJE (conversacion_id, remitente_usuario_id, contenido, fecha_envio, leido) VALUES
+  (1, 2, 'Estimado apoderado, Martina ha mostrado buen avance en la actividad de sumas y restas.', '2026-09-10 09:00:00', TRUE),
+  (1, 5, 'Muchas gracias por avisar, seguiremos reforzando en casa.', '2026-09-10 10:15:00', TRUE);
+
+-- ---------------------------------------------------------------------
+-- NOTIFICACION
+-- ---------------------------------------------------------------------
+INSERT INTO NOTIFICACION (usuario_id, tipo, titulo, contenido, fecha_creacion, fecha_lectura, estado) VALUES
+  (5, 'calificacion',    'Nueva calificación disponible', 'Martina obtuvo un 6.2 en Sumas y restas hasta el 1000.', '2026-09-14 12:00:00', '2026-09-14 18:30:00', 'LEIDA'),
+  (4, 'plazo_proximo',   'Actividad próxima a vencer',     'La actividad "Sumas y restas hasta el 1000" vence el 2026-09-15.', '2026-09-13 08:00:00', NULL, 'PENDIENTE'),
+  (6, 'nueva_tarea',     'Nueva actividad asignada',        'Se asignó la actividad "Fracciones simples" al curso 4° Básico B.', '2026-09-05 07:30:00', NULL, 'PENDIENTE');
+
+-- ---------------------------------------------------------------------
+-- INTERACCION_ACTIVIDAD
+-- ---------------------------------------------------------------------
+INSERT INTO INTERACCION_ACTIVIDAD (actividad_id, usuario_id, tipo_interaccion, detalle, fecha_hora) VALUES
+  (1, 7, 'inicio_actividad',  'El alumno inició la actividad.', '2026-09-14 15:00:00'),
+  (1, 7, 'consulta_tutor_ia', 'Resumen: el alumno preguntó cómo sumar con reserva.', '2026-09-14 15:05:00'),
+  (1, 7, 'respuesta',         'El alumno completó la actividad.', '2026-09-14 15:20:00'),
+  (3, 9, 'consulta_tutor_ia', 'Resumen: el alumno preguntó qué es una fracción.', '2026-09-16 11:00:00');
+
+-- ---------------------------------------------------------------------
+-- FORO / TEMA_FORO / COMENTARIO_FORO
+-- ---------------------------------------------------------------------
+INSERT INTO FORO (nombre, descripcion, fecha_creacion, estado) VALUES
+  ('Comunidad 3° Básico A', 'Foro informativo para profesores y apoderados del curso 3° Básico A.', '2026-03-01 08:00:00', 'ACTIVO');
+
+INSERT INTO TEMA_FORO (foro_id, autor_usuario_id, titulo, contenido, fecha_creacion, estado) VALUES
+  (1, 2, 'Reunión de apoderados - Septiembre', 'Se informa que la reunión de apoderados será el 25 de septiembre a las 18:00 hrs.', '2026-09-01 10:00:00', 'ACTIVO');
+
+INSERT INTO COMENTARIO_FORO (tema_id, autor_usuario_id, contenido, fecha_creacion, fecha_edicion, estado) VALUES
+  (1, 5, 'Gracias por el aviso, ¿será presencial o vía videollamada?', '2026-09-01 11:30:00', NULL, 'ACTIVO'),
+  (1, 2, 'Será vía videollamada, el enlace se enviará por este medio.', '2026-09-01 12:00:00', NULL, 'ACTIVO');

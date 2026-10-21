@@ -1,0 +1,40 @@
+# Entorno y Credenciales Sensibles (NUNCA subir a Git)
+*.env
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*api_key*.txt
+*secret*.txt
+*DEEPGRAM*.txt
+*ELEVENLABS*.txt
+*GEMINI*.txt
+backend/deepgram_api_key.txt
+backend/elevenlabs_secret.txt
+backend/gemini_api_key.txt
+
+# Cache de Audio TTS y Temporales
+audio_cache/
+backend/audio_cache/
+*.mp3
+*.wav
+*.webm
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.venv/
+
+# Logs & Archivos Temporales
+*.log
+scratch/
+.system_generated/
+
+# Sistema Operativo
+.DS_Store
+Thumbs.db
+Desktop.ini

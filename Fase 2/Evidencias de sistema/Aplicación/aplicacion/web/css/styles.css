@@ -1,0 +1,226 @@
+/* Global Theme Variables & Animation Styles */
+:root {
+  /* Default: Navy Oxford Theme */
+  --primary: #1e3a8a;
+  --primary-hover: #172554;
+  --primary-light: #eff6ff;
+  --primary-subtle: #dbeafe;
+  --secondary: #2563eb;
+  --accent: #f59e0b;
+  --accent-light: #fef3c7;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --bg-main: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-sidebar: #0f172a;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --border-color: #e2e8f0;
+  --shadow-soft: 0 4px 20px -2px rgba(15, 23, 42, 0.06);
+  --header-grad: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%);
+  --ai-glow: rgba(37, 99, 235, 0.4);
+}
+
+[data-theme="emerald"] {
+  /* Emerald EdTech Theme */
+  --primary: #0f766e;
+  --primary-hover: #115e59;
+  --primary-light: #f0fdfa;
+  --primary-subtle: #ccfbf1;
+  --secondary: #0d9488;
+  --accent: #6366f1;
+  --accent-light: #e0e7ff;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #f43f5e;
+  --bg-main: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-sidebar: #042f2e;
+  --text-main: #134e4a;
+  --text-muted: #64748b;
+  --border-color: #e2e8f0;
+  --shadow-soft: 0 4px 20px -2px rgba(15, 118, 110, 0.07);
+  --header-grad: linear-gradient(135deg, #0f766e 0%, #0d9488 100%);
+  --ai-glow: rgba(20, 184, 166, 0.45);
+}
+
+[data-theme="violet"] {
+  /* Cyber Indigo / Violet NextGen Theme */
+  --primary: #4338ca;
+  --primary-hover: #3730a3;
+  --primary-light: #f5f3ff;
+  --primary-subtle: #ede9fe;
+  --secondary: #7c3aed;
+  --accent: #ec4899;
+  --accent-light: #fce7f3;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #f43f5e;
+  --bg-main: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-sidebar: #1e1b4b;
+  --text-main: #1e1b4b;
+  --text-muted: #64748b;
+  --border-color: #e2e8f0;
+  --shadow-soft: 0 4px 20px -2px rgba(67, 56, 202, 0.08);
+  --header-grad: linear-gradient(135deg, #4338ca 0%, #7c3aed 100%);
+  --ai-glow: rgba(124, 58, 237, 0.45);
+}
+
+/* Base styling with CSS Variables */
+body {
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+.theme-header {
+  background: var(--header-grad);
+}
+
+.theme-primary-bg {
+  background-color: var(--primary) !important;
+}
+
+.theme-primary-text {
+  color: var(--primary) !important;
+}
+
+.theme-primary-border {
+  border-color: var(--primary) !important;
+}
+
+.theme-primary-light-bg {
+  background-color: var(--primary-light) !important;
+}
+
+.theme-accent-bg {
+  background-color: var(--accent) !important;
+}
+
+.theme-accent-text {
+  color: var(--accent) !important;
+}
+
+.card-soft {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-soft);
+  border-radius: 1rem;
+}
+
+/* Audio Wave Visualizer Animation for Voice AI */
+@keyframes soundWave {
+  0%, 100% {
+    height: 8px;
+    opacity: 0.4;
+  }
+  50% {
+    height: 42px;
+    opacity: 1;
+  }
+}
+
+.sound-bar {
+  width: 4px;
+  border-radius: 9999px;
+  background: linear-gradient(180deg, var(--secondary) 0%, var(--accent) 100%);
+  animation: soundWave 1.2s ease-in-out infinite;
+}
+
+.sound-bar:nth-child(1) { animation-delay: 0.1s; }
+.sound-bar:nth-child(2) { animation-delay: 0.3s; }
+.sound-bar:nth-child(3) { animation-delay: 0.6s; }
+.sound-bar:nth-child(4) { animation-delay: 0.2s; }
+.sound-bar:nth-child(5) { animation-delay: 0.5s; }
+.sound-bar:nth-child(6) { animation-delay: 0.4s; }
+.sound-bar:nth-child(7) { animation-delay: 0.7s; }
+
+/* Floating AI Button Glow Pulse */
+@keyframes aiPulse {
+  0% {
+    box-shadow: 0 0 0 0 var(--ai-glow);
+  }
+  70% {
+    box-shadow: 0 0 0 16px rgba(0, 0, 0, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 0, 0, 0);
+  }
+}
+
+.ai-pulse-button {
+  animation: aiPulse 2.4s infinite;
+}
+
+/* Scale badges for grades (Chilean 1.0 - 7.0 system) */
+.grade-badge-excellent {
+  background-color: #dbeafe;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.grade-badge-good {
+  background-color: #d1fae5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+
+.grade-badge-warning {
+  background-color: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+.grade-badge-danger {
+  background-color: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+/* Custom smooth scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Floating Dock Glassmorphism (Layout 3) */
+.floating-dock {
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 20px 40px -10px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+
+.dock-item {
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.dock-item:hover {
+  transform: translateY(-4px) scale(1.05);
+}
+
+/* Bento Grid Cards */
+.bento-card {
+  background: #ffffff;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  box-shadow: 0 4px 24px -4px rgba(15, 23, 42, 0.05);
+  border-radius: 1.75rem;
+  transition: all 0.25s ease;
+}
+.bento-card:hover {
+  box-shadow: 0 12px 32px -6px rgba(15, 23, 42, 0.09);
+  transform: translateY(-2px);
+}
+

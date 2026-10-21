@@ -1,0 +1,79 @@
+================================================================================
+                    EDUCONNECT - COLEGIO SAN ANDRÉS
+       CUENTAS INSTITUCIONALES PARA EVALUACIÓN Y DESPLIEGUE FINAL
+================================================================================
+
+Este archivo documenta los perfiles y credenciales de acceso para la evaluación
+técnica y funcional de la plataforma escolar EDUCONNECT, disponible en:
+- Versión de Escritorio: index.html
+- Versión Móvil:         mobile.html
+
+Todas las cuentas se encuentran sincronizadas y activas en la base de datos
+relacional MySQL (plataforma_educativa) y autenticadas mediante tokens JWT
+emitidos por el backend oficial en FastAPI (http://localhost:8000/api/auth/login).
+
+--------------------------------------------------------------------------------
+1. ROL: ADMINISTRADOR (Gestión Directiva y Supervisión General)
+   *Disponible exclusivamente en versión de Escritorio (index.html)
+--------------------------------------------------------------------------------
+- Nombre:        Rodrigo Valenzuela Lagos
+- Cargo:         Director Académico / Administrador
+- Correo:        admin@sanandres.cl
+- Contraseña:    admin123
+- Vistas clave:  Asignación Curricular, Alertas Oficiales, Mensajería, Reportería
+
+--------------------------------------------------------------------------------
+2. ROL: PROFESORA (Gestión Pedagógica y Docente para 1° y 2° Básico)
+   *Disponible en Escritorio (index.html) y en Móvil (mobile.html)
+--------------------------------------------------------------------------------
+- Nombre:        Marcela Soto Valenzuela
+- Cargo:         Profesora Jefe 1° Básico B
+- Correo:        profesora@sanandres.cl
+- Contraseña:    profe123
+- Vistas en Escritorio: Asignar Actividades con Voz IA, Alertas al Curso, Mensajería, Reportería
+- Vistas en Móvil:      Mensajería directa con familias y Reportería de notas del curso
+  *REGLA DE ACCESO:     Por diseño institucional, el módulo docente en móvil no
+                        despliega alertas operativas para evitar saturación en ruta.
+
+--------------------------------------------------------------------------------
+3. ROL: APODERADO (Familia y Seguimiento Escolar Multi-Estudiante)
+   *Disponible en Escritorio (index.html) y en Móvil (mobile.html)
+--------------------------------------------------------------------------------
+- Nombre:        Carolina Tapia Morales
+- Cargo:         Apoderada Titular (2 Estudiantes a cargo)
+                 - Mateo González Tapia (1° Básico B)
+                 - Sofía González Tapia (2° Básico A)
+- Correo:        apoderado@sanandres.cl
+- Contraseña:    apoderado123
+- Vistas en Escritorio: Reportería y Semáforo (con selector dinámico de pupilo),
+                        Tareas y Misiones con Voz IA, Mensajería Docente
+- Vistas en Móvil:      Mensajería oficial con docente, Reportería con cambio
+                        de estudiante y Visualización de Alertas Institucionales
+
+--------------------------------------------------------------------------------
+4. ROL: ALUMNO (Estudiante de 1° Básico - 6 a 7 años)
+   *Disponible exclusivamente en versión de Escritorio (index.html)
+--------------------------------------------------------------------------------
+- Nombre:        Mateo González Tapia
+- Cargo:         Estudiante 1° Básico B
+- Correo:        alumno@sanandres.cl
+- Contraseña:    alumno123
+- Vistas clave:  Misiones y Tareas con Agente de Voz IA (Robot Leo)
+
+--------------------------------------------------------------------------------
+5. USUARIOS INSTITUCIONALES ADICIONALES (Mapeados desde bd.txt)
+--------------------------------------------------------------------------------
+- Administrador General: marco.palma@duocuc.cl        (admin123)
+- Docente de Lenguaje:   carolina.munoz@colegio.cl    (profe123)
+- Docente de Matemática: felipe.rojas@colegio.cl      (profe123)
+- Apoderado:             rodrigo.fuentes@gmail.com    (apoderado123)
+
+================================================================================
+ESPECIFICACIONES DE SEGURIDAD DEL ENTREGABLE:
+================================================================================
+1. Autenticación criptográfica con JWT (JSON Web Tokens) firmados con algoritmo HS256.
+2. Contraseñas protegidas mediante algoritmo de dispersión segura bcrypt con salt.
+3. Consultas SQL parametrizadas para mitigar inyecciones SQL (SQLi).
+4. Sanitización de entradas de texto contra Cross-Site Scripting (XSS).
+5. Headers de seguridad y políticas de origen CORS restringidas.
+================================================================================

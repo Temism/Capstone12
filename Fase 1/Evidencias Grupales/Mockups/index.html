@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="navy">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EDUCONNECT - Mockups Interactivos (3 Diseños de Layout)</title>
+  
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+          animation: {
+            fadeIn: 'fadeIn 0.25s ease-in-out',
+          },
+          keyframes: {
+            fadeIn: {
+              '0%': { opacity: '0', transform: 'translateY(4px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+
+  <!-- Chart.js for Interactive Metrics -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Custom Styles & Theme Definitions -->
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="min-h-screen antialiased selection:bg-blue-500 selection:text-white bg-slate-50">
+
+  <!-- Dynamic Application Root for Layout Engines -->
+  <div id="app-root"></div>
+
+  <!-- Floating Voice AI Button (Para layouts que lo requieran) -->
+  <div id="floating-voice-container"></div>
+
+  <!-- Modal Container for Voice AI -->
+  <div id="modal-container"></div>
+
+  <!-- Application Scripts -->
+  <script src="js/data.js"></script>
+  <script src="js/components.js"></script>
+  <script src="js/layouts.js"></script>
+  <script src="js/views/reporteria.js"></script>
+  <script src="js/views/alertas.js"></script>
+  <script src="js/views/actividades.js"></script>
+  <script src="js/views/asignar.js"></script>
+  <script src="js/views/mensajeria.js"></script>
+  <script src="js/app.js"></script>
+
+</body>
+</html>

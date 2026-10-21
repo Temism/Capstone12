@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="navy">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>EDUCONNECT Móvil - Colegio San Andrés (Profesor y Apoderado)</title>
+  
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+          animation: {
+            fadeIn: 'fadeIn 0.2s ease-in-out',
+          },
+          keyframes: {
+            fadeIn: {
+              '0%': { opacity: '0', transform: 'translateY(3px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="css/styles.css">
+
+  <style>
+    /* Mobile Device Frame Simulation when viewed on large screens */
+    @media (min-width: 640px) {
+      body {
+        background-color: #0f172a;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        min-height: 100vh;
+        padding: 24px 0;
+      }
+      .mobile-device-shell {
+        width: 412px;
+        min-height: 840px;
+        max-height: 90vh;
+        background: #f8fafc;
+        border-radius: 40px;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 0 10px #1e293b, 0 0 0 12px #334155;
+        overflow-y: auto;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+      }
+      .desktop-helper-bar {
+        display: flex !important;
+      }
+    }
+
+    @media (max-width: 639px) {
+      body {
+        background-color: #f8fafc;
+      }
+      .mobile-device-shell {
+        width: 100%;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+      .desktop-helper-bar {
+        display: none !important;
+      }
+    }
+
+    /* Hide scrollbar for clean app feel */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+<body class="antialiased selection:bg-blue-500 selection:text-white">
+
+  <!-- Helper Bar on Desktop instructing how to test Ctrl+Shift+C -->
+  <div class="desktop-helper-bar hidden max-w-xl w-full mb-4 px-4 py-2.5 rounded-2xl bg-slate-800 text-slate-200 text-xs font-semibold items-center justify-between border border-slate-700 shadow-lg">
+    <div class="flex items-center gap-2">
+      <i data-lucide="smartphone" class="w-4 h-4 text-amber-400"></i>
+      <span>Modo Demostración Móvil: Pulsa <kbd class="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-600 font-mono text-[10px] text-amber-300">Ctrl + Shift + C</kbd> para activar la vista de teléfono en Chrome.</span>
+    </div>
+    <a href="index.html" class="px-3 py-1 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-[11px] font-bold transition flex items-center gap-1">
+      <i data-lucide="monitor" class="w-3.5 h-3.5"></i>
+      <span>Volver al Portal</span>
+    </a>
+  </div>
+
+  <!-- Mobile Device Container -->
+  <div class="mobile-device-shell no-scrollbar" id="mobile-root">
+    <!-- App rendered dynamically by js/mobile.js -->
+  </div>
+
+  <!-- Application Scripts -->
+  <script src="js/api.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/mobile.js"></script>
+
+</body>
+</html>

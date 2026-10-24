@@ -37,7 +37,17 @@ const mobileApp = {
         this.loadApiMessages();
       });
     }
+    this.startPolling();
     this.render();
+  },
+
+  _pollTimer: null,
+  startPolling() {
+    if (this._pollTimer) return;
+    this._pollTimer = setInterval(() => {
+      if (document.hidden || this.currentTab !== 'mensajeria') return;
+      this.loadApiMessages();
+    }, 3000);
   },
 
   async loadApiMessages() {

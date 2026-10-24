@@ -1,0 +1,20 @@
+# Node dependencies
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Android Build Caches & Outputs (Se mantiene EduConnect.apk en la raíz de app/)
+.gradle/
+build/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/*.iml
+android/.externalNativeBuild/
+android/.cxx/
+
+# OS Files
+.DS_Store
+Thumbs.db

@@ -7,11 +7,66 @@ const mensajeriaView = {
   hasLoaded: false,
   currentUserId: null,
   isLoadingMessages: false,
+  _pollIntervalId: null,
+
+  startPolling() {
+    if (this._pollIntervalId) return;
+    this._pollIntervalId = setInterval(() => {
+      // Solo refrescar si estamos en la vista de mensajeria y la pagina esta visible
+      if (document.hidden || app.currentView !== 'mensajeria') return;
+      if (window.api && api.isOnline && this.activeConversationId) {
+        this.pollMessages();
+      }
+    }, 3000);
+  },
+
+  stopPolling() {
+    if (this._pollIntervalId) {
+      clearInterval(this._pollIntervalId);
+      this._pollIntervalId = null;
+    }
+  },
+
+  async pollMessages() {
+    if (!window.api || !api.isOnline || !this.activeConversationId) return;
+    try {
+      const msgs = await api.getMessages(this.activeConversationId);
+      if (Array.isArray(msgs)) {
+        const stream = document.getElementById('desktop-chat-stream');
+        const isNearBottom = stream ? (stream.scrollHeight - stream.scrollTop - stream.clientHeight < 120) : false;
+        
+        // Si el numero de mensajes cambio o el ultimo mensaje es distinto
+        const changed = msgs.length !== this.messages.length || 
+          (msgs.length > 0 && msgs[msgs.length - 1].id !== (this.messages[this.messages.length - 1] || {}).id);
+        
+        if (changed) {
+          this.messages = msgs;
+          app.renderCurrentView();
+          if (isNearBottom) {
+            this.scrollToBottom();
+          }
+        }
+      }
+    } catch (e) {
+      // Ignorar error en polling silencioso
+    }
+  },
 
   // Inicializar y cargar datos desde la API
   async initData() {
+    if (this._isInitializing) return;
+    this._isInitializing = true;
+
     const userId = (app.currentUser && app.currentUser.id) ? app.currentUser.id : 13;
     this.currentUserId = userId;
+    this.startPolling();
+
+    // Asegurar que api.checkHealth() haya corrido al menos una vez
+    if (window.api && !api.isOnline) {
+      try {
+        await api.checkHealth();
+      } catch (e) {}
+    }
 
     if (window.api && api.isOnline) {
       try {
@@ -24,6 +79,7 @@ const mensajeriaView = {
           }
           await this.loadMessages(this.activeConversationId);
           this.hasLoaded = true;
+          this._isInitializing = false;
           return;
         }
       } catch (err) {
@@ -32,17 +88,19 @@ const mensajeriaView = {
     }
 
     // Fallback local si el backend no está disponible
+    const isProf = userId === 12;
     this.conversations = mockData.chatChannels.map(ch => ({
       id: ch.id === "ch-2" ? 1 : (ch.id === "ch-1" ? 2 : 3),
       asunto: ch.name,
-      otro_participante: ch.name,
-      otro_rol: ch.type === "Directo" ? "PROFESOR" : "ADMINISTRADOR",
+      otro_participante: isProf ? (ch.id === "ch-2" ? "Carolina Tapia Morales" : "Dirección Escolar") : ch.name,
+      otro_rol: isProf ? (ch.id === "ch-2" ? "APODERADO" : "ADMINISTRADOR") : (ch.type === "Directo" ? "PROFESOR" : "ADMINISTRADOR"),
       ultimo_mensaje: ch.lastMsg,
       ultima_hora: ch.lastTime,
       no_leidos: ch.unread || 0
     }));
     this.messages = mockData.activeMessages;
     this.hasLoaded = true;
+    this._isInitializing = false;
   },
 
   async loadMessages(conversationId) {
@@ -84,11 +142,16 @@ const mensajeriaView = {
         await api.sendMessage(convId, senderId, text);
         // Recargar mensajes actualizados desde MySQL
         await this.loadMessages(convId);
-        // Actualizar último mensaje en la lista de conversaciones
-        const conv = this.conversations.find(c => c.id === convId);
-        if (conv) {
-          conv.ultimo_mensaje = text;
-          conv.ultima_hora = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        // Recargar conversaciones para actualizar orden y último mensaje
+        const updatedConvs = await api.getConversations(senderId);
+        if (Array.isArray(updatedConvs) && updatedConvs.length > 0) {
+          this.conversations = updatedConvs;
+        } else {
+          const conv = this.conversations.find(c => c.id === convId);
+          if (conv) {
+            conv.ultimo_mensaje = text;
+            conv.ultima_hora = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          }
         }
       } catch (err) {
         console.warn("[Mensajería] Error enviando mensaje a la API:", err);
@@ -123,18 +186,20 @@ const mensajeriaView = {
 
     // Disparar carga de API si no ha cargado o si cambió el usuario activo
     if (!this.hasLoaded || this.currentUserId !== userId) {
-      this.initData().then(() => {
-        app.renderCurrentView();
-        this.scrollToBottom();
-      });
+      if (!this._isInitializing) {
+        this.initData().then(() => {
+          app.renderCurrentView();
+          this.scrollToBottom();
+        });
+      }
     }
 
     const conversationsList = this.conversations.length > 0 ? this.conversations : [
       {
         id: 1,
         asunto: "Seguimiento pedagógico de Mateo (1° Básico B)",
-        otro_participante: "Marcela Soto Valenzuela",
-        otro_rol: "PROFESOR",
+        otro_participante: userId === 12 ? "Carolina Tapia Morales" : "Marcela Soto Valenzuela",
+        otro_rol: userId === 12 ? "APODERADO" : "PROFESOR",
         ultimo_mensaje: "Cargando mensajes...",
         ultima_hora: "Hoy",
         no_leidos: 0
@@ -305,7 +370,7 @@ const mensajeriaView = {
               ` : messagesList.map(msg => {
                 // Determinar si el mensaje es del usuario actual
                 const isSelf = msg.remitente_usuario_id === userId || msg.isSelf === true;
-                const senderName = msg.remitente_nombre || msg.sender || (isSelf ? 'Tú' : 'Docente');
+                const senderName = msg.remitente_nombre || msg.sender || (isSelf ? 'Tú' : (userId === 12 ? 'Carolina Tapia' : 'Tía Marcela'));
                 const timeText = msg.hora || msg.time || 'Ahora';
                 const textContent = msg.contenido || msg.text || '';
 

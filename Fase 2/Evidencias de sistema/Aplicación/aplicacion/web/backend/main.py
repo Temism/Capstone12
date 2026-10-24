@@ -11,15 +11,12 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Configuración de CORS segura para clientes web (Escritorio y Móvil)
-cors_origins_env = os.getenv("CORS_ORIGINS", "*")
-origins = [o.strip() for o in cors_origins_env.split(",") if o.strip()] if cors_origins_env != "*" else ["*"]
-
+# Configuración de CORS amplia para clientes web y móviles (Capacitor/Android WebView)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origin_regex=r"^https?://.*",
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 

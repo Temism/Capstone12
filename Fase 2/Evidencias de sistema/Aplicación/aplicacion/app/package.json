@@ -1,0 +1,24 @@
+{
+  "name": "educonnect-mobile",
+  "version": "1.0.0",
+  "description": "Aplicación Móvil EduConnect - Colegio San Andrés (Profesor y Apoderado)",
+  "main": "www/index.html",
+  "scripts": {
+    "cap:sync": "cap sync",
+    "cap:copy": "cap copy",
+    "cap:open:android": "cap open android"
+  },
+  "keywords": [
+    "educonnect",
+    "mobile",
+    "capacitor",
+    "android"
+  ],
+  "author": "Grupo 12 - Capstone APT122",
+  "license": "ISC",
+  "dependencies": {
+    "@capacitor/android": "^7.0.1",
+    "@capacitor/cli": "^7.0.1",
+    "@capacitor/core": "^7.0.1"
+  }
+}

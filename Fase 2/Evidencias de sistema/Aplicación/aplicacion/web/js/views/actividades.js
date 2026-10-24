@@ -138,6 +138,7 @@ const actividadesView = {
             <!-- Botón Lúdico Limpio y Destacado -->
             <div class="flex flex-col items-start lg:items-end justify-center">
               <button 
+                onmouseenter="app.preloadActivityOnHover('${featuredTask.id || 'act-conteo'}')"
                 onclick="app.openVoiceModal('${(featuredTask.title || '').replace(/'/g, "\\'")}', '${featuredTask.id || 'act-conteo'}')"
                 class="px-6 py-4 rounded-2xl bg-amber-400 hover:bg-amber-300 active:scale-98 text-slate-950 font-black text-base shadow-lg transition-all flex items-center gap-3.5 group cursor-pointer"
               >
@@ -299,6 +300,7 @@ const actividadesView = {
               <div class="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between">
                 <span class="text-[11px] font-bold text-slate-400">${act.difficulty}</span>
                 <button 
+                  onmouseenter="app.preloadActivityOnHover('${act.id}')"
                   onclick="app.openVoiceModal('${safeTitle}', '${act.id}')"
                   class="px-4 py-2.5 rounded-xl text-xs font-black cursor-pointer ${
                     act.status === 'Entregada' ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-900' :

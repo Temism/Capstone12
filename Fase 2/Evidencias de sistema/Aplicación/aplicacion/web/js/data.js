@@ -4,6 +4,7 @@ const mockData = {
   // Usuarios autorizados para el Login Demo
   demoUsers: {
     admin: {
+      id: 11,
       email: "admin@sanandres.cl",
       password: "admin123",
       role: "admin",
@@ -15,6 +16,7 @@ const mockData = {
       defaultView: "asignar"
     },
     profesora: {
+      id: 12,
       email: "profesora@sanandres.cl",
       password: "profe123",
       role: "profesora",
@@ -26,6 +28,7 @@ const mockData = {
       defaultView: "asignar"
     },
     apoderado: {
+      id: 13,
       email: "apoderado@sanandres.cl",
       password: "apoderado123",
       role: "apoderado",
@@ -38,6 +41,7 @@ const mockData = {
       defaultView: "reporteria"
     },
     alumno: {
+      id: 14,
       email: "alumno@sanandres.cl",
       password: "alumno123",
       role: "alumno",
@@ -233,18 +237,18 @@ const mockData = {
       oaCode: "MA01 OA 01",
       oaSummary: "Contar números del 0 al 20 de 1 en 1 hacia adelante y hacia atrás",
       activityType: "counting",
-      title: "Misión Conteo Mágico: Cuenta del 1 al 10 con Robot Leo",
+      title: "Cuenta al Ritmo: Del 1 al 20 con Robot Leo",
       difficulty: "1° Básico • MA01 OA 01",
       dueDate: "Hoy, 19:00 hrs",
       urgent: true,
       status: "Pendiente",
-      questionsCount: 10,
+      questionsCount: 20,
       estimatedTime: "5 min",
       voiceAIDefault: true,
       voiceCharacter: "Robot Leo",
-      voiceAIPrompt: "Robot Leo escuchará tu voz mientras cuentas del 1 al 10 en orden ascendente",
-      description: "Desafío interactivo de voz (Mineduc MA01 OA 01). Cuenta en voz alta y en orden ascendente del uno al diez para iluminar tus tarjetas.",
-      disclaimerTtsText: "Hola. Antes de comenzar, recuerda cuidar el ruido ambiente: busca un lugar tranquilo, apaga la musica o el televisor, y habla fuerte y claro cerca del microfono. En esta actividad debes contar en voz alta y en orden del uno al diez: uno, dos, tres, cuatro, cinco, seis, siete, ocho, nueve y diez. Presiona la barra espaciadora nuevamente para iniciar la actividad.",
+      voiceAIPrompt: "Sigue el pulso musical y di cada número en español cuando se ilumine en pantalla (Niveles 1 al 5, 10, 15 y 20)",
+      description: "Reto rítmico interactivo en español (Mineduc MA01 OA 01). Los números aparecen uno por uno siguiendo el compás automático: di cada número en voz alta a tiempo para completar la secuencia y subir de nivel.",
+      disclaimerTtsText: "¡Hola! Qué alegría jugar contigo hoy. Antes de empezar, busca un rincón tranquilo sin tele ni música fuerte para poder escucharte súper bien. Cuando estés listo, toca la barra espaciadora.",
       isCountingMission: true
     },
     {
@@ -253,7 +257,7 @@ const mockData = {
       oaCode: "MA01 OA 09",
       oaSummary: "Demostrar que comprenden la adición en el ámbito del 0 al 10 (Modelo COPISI)",
       activityType: "addition",
-      title: "El Bosque de los Números: Sumas hasta el 10 con Voz",
+      title: "Escalera de Sumas: Sube a la Cima Sumando hasta 10",
       difficulty: "1° Básico • MA01 OA 09",
       dueDate: "Mañana, 18:00 hrs",
       urgent: true,
@@ -262,9 +266,9 @@ const mockData = {
       estimatedTime: "8 min",
       voiceAIDefault: true,
       voiceCharacter: "Robot Leo",
-      voiceAIPrompt: "Robot Leo te leerá 5 problemas de suma con apoyo visual y responderás con tu voz",
-      description: "Adiciones progresivas hasta el 10 con apoyo pictórico y simbólico (Mineduc MA01 OA 09 - Modelo COPISI). Escucha cada problema y responde con tu voz.",
-      disclaimerTtsText: "Hola. Antes de comenzar con las sumas del bosque, busca un lugar tranquilo sin ruidos ni televisor encendido. Robot Leo te contará cinco pequeñas historias de suma. Mira los dibujos en pantalla, junta las cantidades y di el resultado en voz alta. Presiona la barra espaciadora nuevamente para iniciar la actividad.",
+      voiceAIPrompt: "Ayuda a Robot Leo a subir los 5 peldaños de la Escalera Mágica resolviendo cada suma con tu voz",
+      description: "Juego Escalera de Sumas (Mineduc MA01 OA 09 - Modelo COPISI). Cada suma correcta hace subir a Robot Leo un peldaño hacia el trofeo dorado.",
+      disclaimerTtsText: "¡Hola! En la Escalera de Sumas vamos a subir cinco peldaños juntos. Mira los dibujos de cada grupo, cuéntalos todos y dime el resultado en voz alta para subir hasta la estrella dorada.",
       questions: [
         {
           number: 1,
@@ -354,7 +358,7 @@ const mockData = {
       oaCode: "LE01 OA 03",
       oaSummary: "Identificar los sonidos que componen las palabras (conciencia fonológica)",
       activityType: "phonological",
-      title: "Caza de Sonidos: Sonido Inicial con M, P, L y S",
+      title: "Aplaude las Sílabas y Caza de Sonidos (M, P, L y S)",
       difficulty: "1° Básico • LE01 OA 03",
       dueDate: "Viernes, 18:00 hrs",
       urgent: false,
@@ -363,9 +367,9 @@ const mockData = {
       estimatedTime: "8 min",
       voiceAIDefault: true,
       voiceCharacter: "Robot Leo",
-      voiceAIPrompt: "Robot Leo pronunciará palabras y dirás con qué letra o sílaba comienzan",
-      description: "Conciencia fonológica e identificación de fonemas y sílabas iniciales (Mineduc LE01 OA 03 - Leo Primero). Escucha y responde hablando.",
-      disclaimerTtsText: "Hola. Antes de comenzar la caza de sonidos, asegúrate de estar en un lugar tranquilo y sin ruido de fondo. Robot Leo te dirá cinco palabras del programa Leo Primero y tú deberás decir en voz alta con qué letra o sílaba empiezan. Presiona la barra espaciadora nuevamente para iniciar la actividad.",
+      voiceAIPrompt: "Sigue el pulso de las sílabas con Robot Leo y di con qué letra o sílaba empieza cada palabra",
+      description: "Juego rítmico de sílabas y sonidos iniciales (Mineduc LE01 OA 03 - Leo Primero). Aplaude las sílabas al ritmo y descubre el primer sonido.",
+      disclaimerTtsText: "¡Hola! En Aplaude las Sílabas vamos a escuchar cómo suenan las palabras por partes y luego me dirás con qué sonido empiezan. Cuando estés listo, toca la barra espaciadora.",
       questions: [
         {
           number: 1,
@@ -375,8 +379,8 @@ const mockData = {
           icon: "hand",
           targetLetter: "M",
           targetSyllable: "MA",
-          text: "Escucha la palabra <strong>M - A - N - O</strong> (MA - NO). ¿Con qué letra o sílaba comienza <strong>MANO</strong>?",
-          speechAudioText: "Escucha con mucha atención la primera palabra: M, A, N, O... Mano. ¿Con qué letra o sílaba empieza la palabra Mano? Dilo en voz alta.",
+          text: "Escucha las sílabas <strong>MA - NO</strong>. ¿Con qué letra o sílaba empieza <strong>MANO</strong>?",
+          speechAudioText: "Escuchemos la primera palabra por sílabas: MA... NO... Mano. ¿Con qué letra o sílaba empieza Mano? Dímelo con tu voz.",
           acceptedTokens: ["m", "eme", "ma", "mano", "con la m", "con m", "letra m"],
           options: [
             { value: "M", label: "Letra M (MA)", correct: true },
@@ -392,8 +396,8 @@ const mockData = {
           icon: "bird",
           targetLetter: "P",
           targetSyllable: "PA",
-          text: "Escucha la palabra <strong>P - A - T - O</strong> (PA - TO). ¿Con qué letra o sílaba comienza <strong>PATO</strong>?",
-          speechAudioText: "Segunda palabra: P, A, T, O... Pato. ¿Con qué letra o sílaba comienza la palabra Pato? Dilo en el micrófono.",
+          text: "Escucha las sílabas <strong>PA - TO</strong>. ¿Con qué letra o sílaba empieza <strong>PATO</strong>?",
+          speechAudioText: "Segunda palabra: PA... TO... Pato. ¿Con qué letra o sílaba empieza Pato?",
           acceptedTokens: ["p", "pe", "pa", "pato", "con la p", "con p", "letra p"],
           options: [
             { value: "M", label: "Letra M (MA)" },
@@ -409,8 +413,8 @@ const mockData = {
           icon: "moon",
           targetLetter: "L",
           targetSyllable: "LU",
-          text: "Escucha la palabra <strong>L - U - N - A</strong> (LU - NA). ¿Con qué letra o sílaba comienza <strong>LUNA</strong>?",
-          speechAudioText: "Tercera palabra: L, U, N, A... Luna. ¿Con qué letra o sílaba comienza la palabra Luna?",
+          text: "Escucha las sílabas <strong>LU - NA</strong>. ¿Con qué letra o sílaba empieza <strong>LUNA</strong>?",
+          speechAudioText: "Tercera palabra: LU... NA... Luna. ¿Con qué letra o sílaba empieza Luna?",
           acceptedTokens: ["l", "ele", "lu", "luna", "con la l", "con l", "letra l"],
           options: [
             { value: "L", label: "Letra L (LU)", correct: true },
@@ -426,8 +430,8 @@ const mockData = {
           icon: "smile",
           targetLetter: "S",
           targetSyllable: "SA",
-          text: "Escucha la palabra <strong>S - A - P - O</strong> (SA - PO). ¿Con qué letra o sílaba comienza <strong>SAPO</strong>?",
-          speechAudioText: "Cuarta palabra: S, A, P, O... Sapo. ¿Con qué letra o sílaba comienza la palabra Sapo?",
+          text: "Escucha las sílabas <strong>SA - PO</strong>. ¿Con qué letra o sílaba empieza <strong>SAPO</strong>?",
+          speechAudioText: "Cuarta palabra: SA... PO... Sapo. ¿Con qué letra o sílaba empieza Sapo?",
           acceptedTokens: ["s", "ese", "sa", "sapo", "con la s", "con s", "letra s"],
           options: [
             { value: "P", label: "Letra P (PA)" },
@@ -443,8 +447,8 @@ const mockData = {
           icon: "table-2",
           targetLetter: "M",
           targetSyllable: "ME",
-          text: "Escucha la palabra <strong>M - E - S - A</strong> (ME - SA). ¿Con qué letra o sílaba comienza <strong>MESA</strong>?",
-          speechAudioText: "Última palabra: M, E, S, A... Mesa. ¿Con qué letra o sílaba empieza la palabra Mesa?",
+          text: "Escucha las sílabas <strong>ME - SA</strong>. ¿Con qué letra o sílaba empieza <strong>MESA</strong>?",
+          speechAudioText: "Última palabra: ME... SA... Mesa. ¿Con qué letra o sílaba empieza Mesa?",
           acceptedTokens: ["m", "eme", "me", "mesa", "con la m", "con m", "letra m"],
           options: [
             { value: "M", label: "Letra M (ME)", correct: true },
@@ -460,7 +464,7 @@ const mockData = {
       oaCode: "LE01 OA 18",
       oaSummary: "Comprender textos orales (relatos y fábulas) formulando y respondiendo preguntas oralmente",
       activityType: "story_comprehension",
-      title: "Cuentos que Hablan: La Zorra y las Uvas",
+      title: "Detective de Cuentos: La Zorra y las Uvas",
       difficulty: "1° Básico • LE01 OA 18",
       dueDate: "Lunes, 18:00 hrs",
       urgent: false,
@@ -469,51 +473,92 @@ const mockData = {
       estimatedTime: "10 min",
       voiceAIDefault: true,
       voiceCharacter: "Robot Leo",
-      voiceAIPrompt: "Escucha la fábula narrada y responde 3 preguntas abiertas con tu propia voz",
-      description: "Comprensión oral de textos narrados (Mineduc LE01 OA 18). Escucha la fábula y responde con tus propias palabras a través del micrófono.",
-      disclaimerTtsText: "Hola. En esta actividad escucharemos el cuento de La Zorra y las Uvas. Recuerda estar en un lugar tranquilo sin ruido ambiente. Después de escuchar la historia, te haré tres preguntas y deberás responderlas hablando con tus propias palabras por el micrófono. Presiona la barra espaciadora nuevamente para comenzar.",
+      voiceAIPrompt: "Completa las 3 piezas del Rompecabezas del Cuento respondiendo con tu voz",
+      description: "Juego Detective de Cuentos (Mineduc LE01 OA 18). Cada respuesta correcta desbloquea una pieza del rompecabezas secreto de la fábula.",
+      disclaimerTtsText: "¡Hola, Detective! Vamos a escuchar juntos el cuento de La Zorra y las Uvas. Por cada pregunta que respondas con tu voz, ganarás una pieza del rompecabezas del cuento.",
       storyTitle: "Fábula: La Zorra y las Uvas",
       storyText: "Había una vez una zorra muy hambrienta que caminaba por el bosque. De pronto, vio un racimo de uvas moradas y brillantes en lo alto de una rama. La zorra saltó una, dos y tres veces con todas sus fuerzas, pero no pudo alcanzarlas porque estaban demasiado altas. Finalmente, cansada de saltar, se alejó diciendo: Mejor no las como, seguro están verdes.",
       questions: [
         {
           number: 1,
-          title: "Pregunta 1 de 3 • Comprensión explícita",
+          title: "Pista 1 de 3 • Pieza del Personaje",
+          pieceLabel: "Pieza 1: Las Uvas Moradas",
           question: "¿Qué fruta quería comer la zorra en el bosque?",
-          speechAudioText: "Pregunta número uno sobre el cuento: ¿Qué fruta quería comer la zorra cuando caminaba por el bosque? Presiona la barra espaciadora y cuéntame con tu voz.",
+          speechAudioText: "Primera pista de detective: ¿Qué fruta quería comer la zorra cuando caminaba por el bosque? Cuéntame con tu voz para ganar la primera pieza.",
           criterio: "El estudiante menciona que la zorra quería comer uvas (o un racimo de uvas moradas).",
           keywords: ["uva", "uvas", "racimo", "morada", "moradas"],
-          hintText: "Recuerda qué vio colgando en lo alto de la rama: eran pequeñas, moradas y venían en un racimo."
+          hintText: "Eran pequeñas, moradas y colgaban en un racimo."
         },
         {
           number: 2,
-          title: "Pregunta 2 de 3 • Comprensión inferencial",
+          title: "Pista 2 de 3 • Pieza del Misterio",
+          pieceLabel: "Pieza 2: La Rama Alta",
           question: "¿Por qué la zorra no pudo alcanzar las uvas aunque saltó muchas veces?",
-          speechAudioText: "Pregunta número dos: ¿Por qué la zorra no pudo alcanzar las uvas aunque saltó con todas sus fuerzas? Dilo con tus propias palabras.",
+          speechAudioText: "Segunda pista: ¿Por qué la zorra no pudo alcanzar las uvas aunque saltó con todas sus fuerzas? Dímelo con tus palabras.",
           criterio: "El estudiante explica que las uvas estaban muy altas, demasiado arriba en la rama, o muy lejos para alcanzarlas.",
           keywords: ["alta", "altas", "alto", "arriba", "lejos", "alcanzaba", "alcanzar", "llegaba", "llegar"],
-          hintText: "Piensa en qué lugar de la rama estaban las uvas cuando la zorra saltaba."
+          hintText: "Piensa en qué parte de la rama estaban las uvas."
         },
         {
           number: 3,
-          title: "Pregunta 3 de 3 • Reflexión del relato",
+          title: "Pista 3 de 3 • Pieza de la Enseñanza",
+          pieceLabel: "Pieza 3: El Secreto Final",
           question: "¿Qué dijo la zorra al final cuando se cansó de saltar y se fue?",
-          speechAudioText: "Última pregunta del cuento: ¿Qué dijo la zorra sobre las uvas al final cuando se rindió y se alejó? Cuéntame con tu voz.",
+          speechAudioText: "Última pista para completar el rompecabezas: ¿Qué dijo la zorra sobre las uvas al final cuando se alejó?",
           criterio: "El estudiante menciona que la zorra dijo que estaban verdes, que no estaban maduras o que mejor no se las comía.",
           keywords: ["verde", "verdes", "madura", "maduras", "no las como", "no queria", "acida"],
-          hintText: "Al final, la zorra dijo que seguro las uvas aún tenían cierto color y no estaban listas para comer."
+          hintText: "Dijo que seguro las uvas todavía tenían color verde."
         }
       ]
+    },
+    {
+      id: "act-tablas",
+      subject: "Matemáticas",
+      oaCode: "MA02 OA 11",
+      oaSummary: "Demostrar que comprenden la multiplicación por 2 y por 5 mediante conteo por saltos y grupos iguales",
+      activityType: "skip_counting",
+      title: "Salta al Ritmo: Multiplicando por 2 y por 5",
+      difficulty: "Desafío Rítmico • Tablas x2 y x5",
+      dueDate: "Viernes, 18:00 hrs",
+      urgent: false,
+      status: "Pendiente",
+      questionsCount: 10,
+      estimatedTime: "6 min",
+      voiceAIDefault: true,
+      voiceCharacter: "Robot Leo",
+      voiceAIPrompt: "Sigue los saltos de 2 en 2 y de 5 en 5 al ritmo de la música diciendo cada resultado en voz alta",
+      description: "Juego rítmico de multiplicación inicial (Tablas del 2 y del 5). Salta por la recta numérica siguiendo el pulso y di los múltiplos a tiempo.",
+      disclaimerTtsText: "¡Hola! En Salta al Ritmo vamos a multiplicar dando saltos de dos en dos y de cinco en cinco. Di cada número en voz alta apenas brille en la pantalla. Toca espacio para empezar."
     }
   ],
 
   // Actividades Alumno 2° Básico (Sofía)
   sofiaActivities: [
     {
+      id: "act-sofia-2",
+      subject: "Matemáticas",
+      oaCode: "MA02 OA 11",
+      oaSummary: "Demostrar que comprenden la multiplicación por 2 y por 5 usando representaciones concretas y pictóricas",
+      activityType: "skip_counting",
+      title: "Salta al Ritmo: Multiplicando por 2 y por 5",
+      difficulty: "2° Básico • MA02 OA 11",
+      dueDate: "Viernes 18:00 hrs",
+      urgent: true,
+      status: "Pendiente",
+      questionsCount: 10,
+      estimatedTime: "8 min",
+      voiceAIDefault: true,
+      voiceCharacter: "Robot Leo",
+      voiceAIPrompt: "Sigue los saltos de 2 en 2 y de 5 en 5 al ritmo del compás diciendo cada resultado con tu voz",
+      description: "Reto rítmico de tablas del 2 y del 5 (Mineduc MA02 OA 11). Cuenta de 2 en 2 hasta 20 y de 5 en 5 hasta 50 siguiendo el pulso.",
+      disclaimerTtsText: "¡Hola Sofía! En Salta al Ritmo vamos a practicar las tablas del dos y del cinco siguiendo el compás. Di cada número fuerte cuando aparezca en el centro."
+    },
+    {
       id: "act-sofia-1",
       subject: "Lenguaje y Comunicación",
       oaCode: "LE02 OA 18",
       activityType: "story_comprehension",
-      title: "Fábulas Clásicas: La Zorra y las Uvas (Comprensión con Voz)",
+      title: "Detective de Cuentos: La Zorra y las Uvas",
       difficulty: "2° Básico • LE02 OA 18",
       dueDate: "Jueves 17:00 hrs",
       urgent: true,
@@ -522,34 +567,38 @@ const mockData = {
       estimatedTime: "10 min",
       voiceAIDefault: true,
       voiceCharacter: "Robot Leo",
-      voiceAIPrompt: "Robot Leo leerá la fábula y hará preguntas abiertas de comprensión oral",
-      description: "Escucha la narración hablada de la fábula y descubre la enseñanza de la historia respondiendo por voz.",
+      voiceAIPrompt: "Descubre las 3 piezas del rompecabezas de la fábula respondiendo con tu voz",
+      description: "Escucha la narración hablada de la fábula y desbloquea las 3 piezas del rompecabezas respondiendo por voz.",
+      disclaimerTtsText: "¡Hola Sofía! Escuchemos la fábula de La Zorra y las Uvas. Por cada respuesta que me des con tu voz, desbloquearás una pieza del rompecabezas.",
       storyTitle: "Fábula: La Zorra y las Uvas",
       storyText: "Había una vez una zorra muy hambrienta que caminaba por el bosque. De pronto, vio un racimo de uvas moradas y brillantes en lo alto de una rama. La zorra saltó una, dos y tres veces con todas sus fuerzas, pero no pudo alcanzarlas porque estaban demasiado altas. Finalmente, cansada de saltar, se alejó diciendo: Mejor no las como, seguro están verdes.",
       questions: [
         {
           number: 1,
-          title: "Pregunta 1 de 3",
+          title: "Pista 1 de 3 • Pieza del Personaje",
+          pieceLabel: "Pieza 1: Las Uvas Moradas",
           question: "¿Qué fruta quería comer la zorra en el bosque?",
-          speechAudioText: "Hola Sofía. Primera pregunta: ¿Qué fruta quería comer la zorra en el bosque?",
+          speechAudioText: "Hola Sofía. Primera pista: ¿Qué fruta quería comer la zorra en el bosque?",
           criterio: "El estudiante menciona las uvas.",
           keywords: ["uva", "uvas", "racimo"],
           hintText: "Era una fruta morada en racimo."
         },
         {
           number: 2,
-          title: "Pregunta 2 de 3",
+          title: "Pista 2 de 3 • Pieza del Misterio",
+          pieceLabel: "Pieza 2: La Rama Alta",
           question: "¿Por qué la zorra no pudo alcanzar las uvas?",
-          speechAudioText: "Segunda pregunta: ¿Por qué la zorra no pudo alcanzar las uvas aunque saltó varias veces?",
+          speechAudioText: "Segunda pista: ¿Por qué la zorra no pudo alcanzar las uvas aunque saltó varias veces?",
           criterio: "Porque estaban muy altas.",
           keywords: ["alta", "altas", "alto", "arriba", "lejos"],
           hintText: "Estaban en lo más alto de la rama."
         },
         {
           number: 3,
-          title: "Pregunta 3 de 3",
+          title: "Pista 3 de 3 • Pieza de la Enseñanza",
+          pieceLabel: "Pieza 3: El Secreto Final",
           question: "¿Qué dijo la zorra al final cuando se cansó de saltar?",
-          speechAudioText: "Tercera pregunta: ¿Qué dijo la zorra al final cuando decidió irse?",
+          speechAudioText: "Tercera pista: ¿Qué dijo la zorra al final cuando decidió irse?",
           criterio: "Dijo que seguro estaban verdes.",
           keywords: ["verde", "verdes", "madura", "no las como"],
           hintText: "Dijo que aún estaban de color verde."
@@ -557,55 +606,38 @@ const mockData = {
       ]
     },
     {
-      id: "act-sofia-2",
-      subject: "Matemáticas",
-      oaCode: "MA02 OA 11",
-      activityType: "addition",
-      title: "El Reino de las Tablas: Multiplicando por 2 y por 5",
-      difficulty: "2° Básico • MA02 OA 11",
-      dueDate: "Viernes 18:00 hrs",
-      urgent: false,
-      status: "Pendiente",
-      questionsCount: 5,
-      estimatedTime: "12 min",
-      voiceAIDefault: true,
-      voiceCharacter: "Robot Leo",
-      voiceAIPrompt: "Robot Leo te dirá los grupos de números para contar de 2 en 2 y sumar cantidades",
-      description: "Practica el conteo reiterado y las primeras tablas de multiplicar con preguntas habladas."
-    },
-    {
       id: "act-sofia-3",
       subject: "Lenguaje y Comunicación",
       oaCode: "LE02 OA 21",
       activityType: "phonological",
-      title: "Lectura de Oraciones y Reglas de Puntuación",
+      title: "Aplaude las Sílabas y Signos de Expresión",
       difficulty: "2° Básico • LE02 OA 21",
       dueDate: "18 Sep 2026",
       urgent: false,
       status: "En progreso",
       progressPercent: 60,
       questionsCount: 5,
-      estimatedTime: "12 min",
+      estimatedTime: "10 min",
       voiceAIDefault: true,
       voiceCharacter: "Robot Leo",
-      description: "Identificación de mayúsculas al inicio y punto final al terminar una idea."
+      description: "Juego rítmico de sílabas iniciales y entonación de oraciones en voz alta."
     },
     {
       id: "act-sofia-4",
       subject: "Matemáticas",
       oaCode: "MA02 OA 09",
       activityType: "addition",
-      title: "Resolución de Problemas: Sumas con Reserva hasta el 50",
+      title: "Mercado de Robot Leo: Sumas hasta el 50",
       difficulty: "2° Básico • MA02 OA 09",
       dueDate: "Entregada el 01 Sep",
       urgent: false,
       status: "Entregada",
       score: "6.4 / 7.0",
       questionsCount: 5,
-      estimatedTime: "14 min",
+      estimatedTime: "12 min",
       voiceAIDefault: true,
       voiceCharacter: "Robot Leo",
-      description: "Ejercicios guiados de cálculo mental y sumas con canje hasta el número 50."
+      description: "Sube los peldaños del Mercado Mágico sumando cantidades con apoyo visual y voz."
     }
   ],
 

@@ -4,7 +4,9 @@
 // de lo contrario aplica fallback transparente a datos locales para garantizar resiliencia total.
 
 const api = {
-  baseUrl: 'http://localhost:8000/api',
+  baseUrl: (window.location.protocol === 'file:' || !window.location.host) 
+    ? 'http://127.0.0.1:8000/api' 
+    : `${window.location.protocol}//${window.location.hostname}:8000/api`,
   isOnline: false,
   checkedOnce: false,
   token: localStorage.getItem('educonnect_jwt_token') || null,
@@ -371,18 +373,40 @@ const api = {
   audioChunks: [],
   isRecordingAudio: false,
   _ttsBlobCache: {},
+  _audioContext: null,
+  _analyser: null,
+  _vadInterval: null,
+  _hasSpokenVoice: false,
+  _silenceStartTimestamp: null,
 
-  async startVoiceRecording() {
+  stopVoiceRecordingCleanup() {
+    if (this._vadInterval) {
+      clearInterval(this._vadInterval);
+      this._vadInterval = null;
+    }
+    if (this._audioContext) {
+      try {
+        this._audioContext.close();
+      } catch (e) {}
+      this._audioContext = null;
+    }
+    this._analyser = null;
+    this._hasSpokenVoice = false;
+    this._silenceStartTimestamp = null;
+    if (this.mediaRecorder && this.mediaRecorder.stream) {
+      try {
+        this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
+      } catch (e) {}
+    }
+  },
+
+  async startVoiceRecording(onSilenceDetected) {
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         return { success: false, error: "Navegador no soporta captura de micrófono" };
       }
-      // Limpiar cualquier stream previo que haya quedado abierto
-      if (this.mediaRecorder && this.mediaRecorder.stream) {
-        try {
-          this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
-        } catch (e) {}
-      }
+      this.stopVoiceRecordingCleanup();
+
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -403,9 +427,64 @@ const api = {
       this.mediaRecorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) this.audioChunks.push(e.data);
       };
-      // Solicitar fragmentos cada 200ms para garantizar datos completos desde el primer intento
       this.mediaRecorder.start(200);
       this.isRecordingAudio = true;
+
+      // Analizador de audio en vivo + Detector de Silencio opcional (Auto-Stop VAD)
+      try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+          this._audioContext = new AudioContextClass();
+          const source = this._audioContext.createMediaStreamSource(stream);
+          this._analyser = this._audioContext.createAnalyser();
+          this._analyser.fftSize = 512;
+          source.connect(this._analyser);
+
+          if (typeof onSilenceDetected === 'function') {
+            const bufferLength = this._analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            this._hasSpokenVoice = false;
+            this._silenceStartTimestamp = null;
+            const SPEECH_THRESHOLD = 18; // Nivel de volumen mínimo para detectar voz activa
+            const SILENCE_DURATION_MS = 1300; // 1.3s de silencio posterior a haber hablado
+
+            this._vadInterval = setInterval(() => {
+              if (!this.isRecordingAudio || !this._analyser) {
+                if (this._vadInterval) {
+                  clearInterval(this._vadInterval);
+                  this._vadInterval = null;
+                }
+                return;
+              }
+              this._analyser.getByteFrequencyData(dataArray);
+              let sum = 0;
+              for (let i = 0; i < bufferLength; i++) {
+                sum += dataArray[i];
+              }
+              const averageVolume = sum / bufferLength;
+
+              if (averageVolume > SPEECH_THRESHOLD) {
+                this._hasSpokenVoice = true;
+                this._silenceStartTimestamp = null;
+              } else if (this._hasSpokenVoice) {
+                const now = Date.now();
+                if (!this._silenceStartTimestamp) {
+                  this._silenceStartTimestamp = now;
+                } else if (now - this._silenceStartTimestamp >= SILENCE_DURATION_MS) {
+                  if (this._vadInterval) {
+                    clearInterval(this._vadInterval);
+                    this._vadInterval = null;
+                  }
+                  onSilenceDetected();
+                }
+              }
+            }, 100);
+          }
+        }
+      } catch (vadErr) {
+        console.warn("[VAD] Analizador de audio no disponible:", vadErr);
+      }
+
       return { success: true };
     } catch (err) {
       console.warn("[Voz] Error al acceder al micrófono:", err);
@@ -416,6 +495,7 @@ const api = {
   async stopVoiceRecordingAndTranscribe(language = 'es') {
     return new Promise((resolve) => {
       if (!this.mediaRecorder || !this.isRecordingAudio) {
+        this.stopVoiceRecordingCleanup();
         resolve({ success: false, error: "No hay grabación activa" });
         return;
       }
@@ -424,24 +504,48 @@ const api = {
         try {
           const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
           this.isRecordingAudio = false;
-          // Liberar el micrófono
-          if (this.mediaRecorder.stream) {
-            this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
-          }
+          this.stopVoiceRecordingCleanup();
+
           let result = await this.transcribeAudio(audioBlob, language);
-          // Reintento automático único si hubo un micro-corte en el primer intento
           if (!result.success && audioBlob.size > 0) {
-            await new Promise(r => setTimeout(r, 250));
+            await new Promise(r => setTimeout(r, 200));
             result = await this.transcribeAudio(audioBlob, language);
           }
           resolve(result);
         } catch (err) {
+          this.stopVoiceRecordingCleanup();
           resolve({ success: false, error: "Error procesando archivo de audio" });
         }
       };
 
-      this.mediaRecorder.stop();
+      try {
+        this.mediaRecorder.stop();
+      } catch (e) {
+        this.stopVoiceRecordingCleanup();
+        resolve({ success: false, error: "Error al detener grabador" });
+      }
     });
+  },
+
+  // Precarga masiva de audios de una actividad para latencia cero
+  async preloadActivityAudios(act) {
+    if (!act) return;
+    const textsToPreload = [];
+    if (act.disclaimerTtsText) textsToPreload.push(act.disclaimerTtsText);
+    if (act.storyText) textsToPreload.push(act.storyText);
+    if (act.activityType === 'counting' && window.components && Array.isArray(components.countingItems)) {
+      components.countingItems.forEach(item => {
+        if (item.speechPrompt) textsToPreload.push(item.speechPrompt);
+      });
+    }
+    if (Array.isArray(act.questions)) {
+      act.questions.forEach(q => {
+        if (q.speechAudioText) textsToPreload.push(q.speechAudioText);
+        else if (q.question) textsToPreload.push(q.question);
+        else if (q.text) textsToPreload.push(q.text.replace(/<[^>]+>/g, ''));
+      });
+    }
+    await Promise.allSettled(textsToPreload.map(t => this.preloadTtsAudio(t)));
   },
 
   // 7. Sintesis de Voz TTS (Robot Leo)

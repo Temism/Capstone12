@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EDUCONNECT - Minijuegos Mineduc (Excel Fase 1)</title>
+  <link rel="stylesheet" href="css/games.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎮</text></svg>">
+</head>
+<body>
+
+  <!-- Fondo de Nubes Animadas Flotantes -->
+  <div class="cloud-bg">
+    <div class="cloud cloud-1"></div>
+    <div class="cloud cloud-2"></div>
+    <div class="cloud cloud-3"></div>
+  </div>
+
+  <div class="app-container">
+    
+    <!-- Barra Superior de Navegación Lúdica -->
+    <header class="nav-header">
+      <div class="brand-section">
+        <div class="logo-icon-bubble">🎮</div>
+        <div class="brand-text">
+          <h1>EDUCONNECT <span>Mundo Juegos Mineduc</span></h1>
+          <p>Alineado con Objetivos de Aprendizaje de Fase 1 (1° y 2° Básico)</p>
+        </div>
+      </div>
+
+      <!-- Selector de Estudiantes (Mateo en 1° Básico / Sofía en 2° Básico) -->
+      <div class="student-selector-box">
+        <button 
+          type="button" 
+          class="student-btn active" 
+          data-student="mateo" 
+          onclick="window.app.setStudent('mateo')"
+        >
+          <img src="https://images.unsplash.com/photo-1543332164-6e82f355badc?w=150&auto=format&fit=crop&q=80" alt="Mateo" class="student-avatar" onerror="this.src='https://ui-avatars.com/api/?name=Mateo&background=f59e0b&color=000&bold=true'">
+          <span>Mateo (1° Básico)</span>
+        </button>
+        <button 
+          type="button" 
+          class="student-btn" 
+          data-student="sofia" 
+          onclick="window.app.setStudent('sofia')"
+        >
+          <img src="https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80" alt="Sofía" class="student-avatar" onerror="this.src='https://ui-avatars.com/api/?name=Sofia&background=f59e0b&color=000&bold=true'">
+          <span>Sofía (2° Básico)</span>
+        </button>
+      </div>
+
+      <!-- Estrellas Acumuladas & Botón de Sonido -->
+      <div class="rewards-bar">
+        <div class="reward-pill" title="Estrellitas acumuladas completando minijuegos">
+          <span>⭐</span>
+          <span id="total-stars-count">28 Estrellitas</span>
+        </div>
+        <button type="button" class="reward-pill sound-btn" onclick="window.app.toggleSound()" title="Activar/Silenciar Sonido">
+          <span id="sound-toggle-icon">🔊</span>
+          <span>Sonido</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Banner de Robot Leo con referencia al Currículum Mineduc de Fase 1 -->
+    <section class="leo-welcome-card">
+      <div class="leo-welcome-info" id="leo-welcome-text">
+        <!-- Renderizado dinámico desde app.js -->
+      </div>
+      <div class="leo-mascot-container">
+        <!-- Mascota SVG Animada de Robot Leo -->
+      </div>
+    </section>
+
+    <!-- Filtros de Asignaturas Oficiales del Excel de Fase 1 -->
+    <div class="subject-filters">
+      <button type="button" class="filter-chip active" data-filter="todas" onclick="window.app.setFilter('todas')">
+        <span>🌟</span>
+        <span>Todas las Asignaturas</span>
+      </button>
+      <button type="button" class="filter-chip" data-filter="Matemática" onclick="window.app.setFilter('Matemática')">
+        <span>🔢</span>
+        <span>Matemática</span>
+      </button>
+      <button type="button" class="filter-chip" data-filter="Lenguaje y Comunicación" onclick="window.app.setFilter('Lenguaje y Comunicación')">
+        <span>📚</span>
+        <span>Lenguaje y Comunicación</span>
+      </button>
+      <button type="button" class="filter-chip" data-filter="Ciencias Naturales" onclick="window.app.setFilter('Ciencias Naturales')">
+        <span>🔬</span>
+        <span>Ciencias Naturales</span>
+      </button>
+    </div>
+
+    <!-- Cuadrícula de Minijuegos Didácticos -->
+    <main class="games-grid" id="games-grid">
+      <!-- Se inyectan las tarjetas desde app.js -->
+    </main>
+
+  </div>
+
+  <!-- MODAL DEL ESCENARIO DEL MINIJUEGO PANTALLA COMPLETA -->
+  <div class="game-modal-overlay" id="game-modal">
+    <div class="game-stage-container">
+      
+      <!-- Barra Superior del Juego -->
+      <div class="stage-header">
+        <div class="stage-title-wrap">
+          <span class="stage-icon" id="stage-game-icon">🎮</span>
+          <div>
+            <h3 id="stage-game-title">Minijuego Educativo</h3>
+            <span id="stage-game-badge">Matemática • Mineduc</span>
+          </div>
+        </div>
+
+        <div class="stage-controls">
+          <button type="button" class="stage-btn close" onclick="window.app.closeGame()" title="Cerrar y volver al menú">
+            ✕
+          </button>
+        </div>
+      </div>
+
+      <!-- Lienzo Interactivo donde corre cada minijuego -->
+      <div class="stage-canvas" id="stage-game-canvas">
+        <!-- Contenido interactivo dinámico -->
+      </div>
+
+      <!-- Pantalla de Victoria / Celebración con Confeti -->
+      <div class="victory-modal" id="victory-modal">
+        <canvas id="confetti-canvas"></canvas>
+        <div class="victory-trophy-visual">🏆</div>
+        <h2 class="victory-title" id="victory-title">¡Misión Cumplida!</h2>
+        <p class="victory-subtitle" id="victory-subtitle">¡Has alcanzado el indicador de evaluación oficial del Mineduc!</p>
+
+        <div class="victory-stars">
+          <span class="star-pop">⭐</span>
+          <span class="star-pop">⭐</span>
+          <span class="star-pop">⭐</span>
+        </div>
+
+        <div class="victory-actions">
+          <button type="button" class="btn-victory-replay" onclick="window.app.replayActiveGame()">
+            🔄 Jugar de nuevo
+          </button>
+          <button type="button" class="btn-victory-continue" onclick="window.app.closeGame()">
+            🎉 Siguiente Aventura
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Scripts del Motor de Minijuegos -->
+  <script src="js/sound.js"></script>
+  <script src="js/confetti.js"></script>
+  <script src="js/leo.js"></script>
+  <script src="js/games/conteo.js"></script>
+  <script src="js/games/amigos_diez.js"></script>
+  <script src="js/games/sumas_bosque.js"></script>
+  <script src="js/games/patrones.js"></script>
+  <script src="js/games/caza_sonidos.js"></script>
+  <script src="js/games/cuento_zorra.js"></script>
+  <script src="js/games/detective_oraciones.js"></script>
+  <script src="js/games/seres_vivos.js"></script>
+  <script src="js/games/cinco_sentidos.js"></script>
+  <script src="js/games/tablas_rana.js"></script>
+  <script src="js/games/bloques_canje.js"></script>
+  <script src="js/app.js"></script>
+
+</body>
+</html>

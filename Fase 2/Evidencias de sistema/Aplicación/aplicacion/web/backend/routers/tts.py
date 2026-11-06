@@ -1,5 +1,6 @@
 import os
 import hashlib
+import urllib.parse
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel
@@ -54,15 +55,52 @@ def get_tts_status():
         "voice_id": DEFAULT_VOICE_ID
     }
 
+async def generate_edge_tts_fallback(clean_text: str) -> Optional[bytes]:
+    """Sintetiza voz masculina natural en español chileno (LorenzoNeural) cuando ElevenLabs no tiene cuota activa."""
+    try:
+        import edge_tts
+        communicate = edge_tts.Communicate(clean_text, "es-CL-LorenzoNeural", rate="-5%", pitch="-2Hz")
+        audio_chunks = []
+        async for chunk in communicate.stream():
+            if chunk.get("type") == "audio" and chunk.get("data"):
+                audio_chunks.append(chunk["data"])
+        if audio_chunks:
+            return b"".join(audio_chunks)
+    except Exception as e:
+        print(f"[TTS Edge Neural Warning]: {e}")
+
+    try:
+        chunks = []
+        raw_parts = [p.strip() for p in clean_text.replace("!", "!|").replace("?", "?|").replace(".", ".|").split("|") if p.strip()]
+        if not raw_parts:
+            raw_parts = [clean_text[:190]]
+        current = ""
+        for part in raw_parts:
+            if len(current) + len(part) + 1 <= 185:
+                current = f"{current} {part}".strip()
+            else:
+                if current:
+                    chunks.append(current)
+                current = part[:185]
+        if current:
+            chunks.append(current)
+
+        audio_parts = []
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            for ch in chunks:
+                encoded = urllib.parse.quote(ch)
+                g_url = f"https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=es&q={encoded}"
+                r = await client.get(g_url, headers={"User-Agent": "Mozilla/5.0"})
+                if r.status_code == 200 and r.content:
+                    audio_parts.append(r.content)
+        if audio_parts:
+            return b"".join(audio_parts)
+    except Exception as e:
+        print(f"[TTS Fallback Error]: {e}")
+    return None
+
 async def generate_tts_audio(text: str, voice_id: Optional[str] = None) -> bytes:
     """Genera el audio en MP3 mediante ElevenLabs, con cache local y fallback inteligente."""
-    api_key = get_elevenlabs_api_key()
-    if not api_key:
-        raise HTTPException(
-            status_code=503,
-            detail="Servicio de voz no configurado. Verifica el archivo elevenlabs_secret.txt."
-        )
-
     target_voice = (voice_id or DEFAULT_VOICE_ID).strip()
     clean_text = text.strip()
     if not clean_text:
@@ -77,70 +115,65 @@ async def generate_tts_audio(text: str, voice_id: Optional[str] = None) -> bytes
         except Exception:
             pass
 
-    # 2. Consultar ElevenLabs API
-    headers = {
-        "xi-api-key": api_key,
-        "Content-Type": "application/json",
-        "Accept": "audio/mpeg"
-    }
+    api_key = get_elevenlabs_api_key()
 
-    payload = {
-        "text": clean_text,
-        "model_id": "eleven_multilingual_v2",
-        "voice_settings": {
-            "stability": 0.5,
-            "similarity_boost": 0.8
+    # 2. Consultar ElevenLabs API si existe clave
+    if api_key:
+        headers = {
+            "xi-api-key": api_key,
+            "Content-Type": "application/json",
+            "Accept": "audio/mpeg"
         }
-    }
 
-    url = f"{ELEVENLABS_API_URL}/{target_voice}"
+        payload = {
+            "text": clean_text,
+            "model_id": "eleven_multilingual_v2",
+            "voice_settings": {
+                "stability": 0.5,
+                "similarity_boost": 0.8
+            }
+        }
 
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(url, headers=headers, json=payload)
+        url = f"{ELEVENLABS_API_URL}/{target_voice}"
 
-            # Si ElevenLabs requiere plan de pago para la voz de libreria compartida,
-            # utilizar la voz premade asignada para que la experiencia del nino nunca falle
-            if resp.status_code == 402 and target_voice != FALLBACK_VOICE_ID:
-                print(f"[TTS] Voz de libreria requiere plan de pago en ElevenLabs. Aplicando voz optimizada de respaldo.")
-                fallback_cache = get_cache_file_path(clean_text, FALLBACK_VOICE_ID)
-                if os.path.exists(fallback_cache):
-                    with open(fallback_cache, "rb") as fcf:
-                        return fcf.read()
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                resp = await client.post(url, headers=headers, json=payload)
 
-                fallback_url = f"{ELEVENLABS_API_URL}/{FALLBACK_VOICE_ID}"
-                resp = await client.post(fallback_url, headers=headers, json=payload)
-                if resp.status_code == 200:
+                if resp.status_code == 402 and target_voice != FALLBACK_VOICE_ID:
+                    fallback_cache = get_cache_file_path(clean_text, FALLBACK_VOICE_ID)
+                    if os.path.exists(fallback_cache):
+                        with open(fallback_cache, "rb") as fcf:
+                            return fcf.read()
+
+                    fallback_url = f"{ELEVENLABS_API_URL}/{FALLBACK_VOICE_ID}"
+                    resp = await client.post(fallback_url, headers=headers, json=payload)
+
+                if resp.status_code == 200 and resp.content:
                     audio_bytes = resp.content
                     try:
-                        with open(fallback_cache, "wb") as fcf:
-                            fcf.write(audio_bytes)
-                    except Exception:
-                        pass
+                        with open(cache_path, "wb") as cf:
+                            cf.write(audio_bytes)
+                    except Exception as e:
+                        print(f"[TTS Cache Error]: {e}")
                     return audio_bytes
+        except Exception as e:
+            print(f"[TTS ElevenLabs Warning]: {e}")
 
-            if resp.status_code != 200:
-                raise HTTPException(
-                    status_code=resp.status_code,
-                    detail=f"Error en servicio de voz: {resp.text}"
-                )
+    # 3. Fallback automatico y transparente con sintesis neuronal masculina en español
+    fallback_bytes = await generate_edge_tts_fallback(clean_text)
+    if fallback_bytes:
+        try:
+            with open(cache_path, "wb") as cf:
+                cf.write(fallback_bytes)
+        except Exception:
+            pass
+        return fallback_bytes
 
-            audio_bytes = resp.content
-
-            # Guardar en cache para reutilizacion instantanea
-            try:
-                with open(cache_path, "wb") as cf:
-                    cf.write(audio_bytes)
-            except Exception as e:
-                print(f"[TTS Cache Error]: {e}")
-
-            return audio_bytes
-
-    except httpx.RequestError as exc:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Fallo de conexion con el servicio de voz: {str(exc)}"
-        )
+    raise HTTPException(
+        status_code=503,
+        detail="No fue posible sintetizar el audio en este momento."
+    )
 
 @router.get("/hablar")
 async def hablar_get(text: str = Query(..., min_length=1, max_length=1000), voice_id: Optional[str] = None):

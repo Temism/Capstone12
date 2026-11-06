@@ -31,299 +31,28 @@ class EstadoActividadUpdate(BaseModel):
     tiempo_minutos: Optional[int] = 5
 
 
-def ensure_activity_states_schema():
-    """
-    Asegura que las tablas ACTIVIDAD y ENTREGA cuenten con las columnas necesarias
-    para persistir estados ('Pendiente', 'En progreso', 'Entregada'), progreso y asignatura,
-    y sincroniza el catalogo base de actividades de 1° y 2° Basico en MySQL.
-    """
-    conn = None
-    try:
-        conn = get_connection()
-        cur = conn.cursor(dictionary=True)
-
-        # 1. Verificar columnas en ACTIVIDAD
-        cur.execute("SHOW COLUMNS FROM ACTIVIDAD")
-        act_cols = {row["Field"].lower() for row in cur.fetchall()}
-
-        if "asignatura" not in act_cols:
-            cur.execute("ALTER TABLE ACTIVIDAD ADD COLUMN asignatura VARCHAR(80) NOT NULL DEFAULT 'Matemáticas'")
-        if "codigo_frontend" not in act_cols:
-            cur.execute("ALTER TABLE ACTIVIDAD ADD COLUMN codigo_frontend VARCHAR(50) NULL")
-        if "dificultad" not in act_cols:
-            cur.execute("ALTER TABLE ACTIVIDAD ADD COLUMN dificultad VARCHAR(60) NOT NULL DEFAULT '1° Básico • Inicial'")
-        if "tiempo_estimado" not in act_cols:
-            cur.execute("ALTER TABLE ACTIVIDAD ADD COLUMN tiempo_estimado VARCHAR(30) NOT NULL DEFAULT '10 min'")
-        if "cantidad_preguntas" not in act_cols:
-            cur.execute("ALTER TABLE ACTIVIDAD ADD COLUMN cantidad_preguntas INT NOT NULL DEFAULT 5")
-        if "urgente" not in act_cols:
-            cur.execute("ALTER TABLE ACTIVIDAD ADD COLUMN urgente BOOLEAN NOT NULL DEFAULT FALSE")
-
-        # 2. Verificar columnas en ENTREGA
-        cur.execute("SHOW COLUMNS FROM ENTREGA")
-        ent_cols = {row["Field"].lower() for row in cur.fetchall()}
-
-        if "estado" not in ent_cols:
-            cur.execute("ALTER TABLE ENTREGA ADD COLUMN estado VARCHAR(30) NOT NULL DEFAULT 'Entregada'")
-        if "progreso" not in ent_cols:
-            cur.execute("ALTER TABLE ENTREGA ADD COLUMN progreso INT NOT NULL DEFAULT 100")
-        if "tiempo_minutos" not in ent_cols:
-            cur.execute("ALTER TABLE ENTREGA ADD COLUMN tiempo_minutos INT NOT NULL DEFAULT 12")
-
-        conn.commit()
-
-        # 3. Obtener IDs de cursos y alumnos de 1° y 2° Basico
-        cur.execute("SELECT id, nombre FROM CURSO WHERE nombre LIKE '%1%Básico%' ORDER BY id ASC LIMIT 1")
-        row_c1 = cur.fetchone()
-        curso_1b_id = row_c1["id"] if row_c1 else 3
-
-        cur.execute("SELECT id, nombre FROM CURSO WHERE nombre LIKE '%2%Básico%' ORDER BY id ASC LIMIT 1")
-        row_c2 = cur.fetchone()
-        curso_2a_id = row_c2["id"] if row_c2 else 4
-
-        cur.execute("SELECT id FROM USUARIO WHERE email = 'profesora@sanandres.cl' LIMIT 1")
-        row_prof = cur.fetchone()
-        profe_id = row_prof["id"] if row_prof else 12
-
-        cur.execute("SELECT a.id FROM ALUMNO a JOIN USUARIO u ON a.usuario_id = u.id WHERE u.email = 'alumno@sanandres.cl' LIMIT 1")
-        row_mateo = cur.fetchone()
-        mateo_id = row_mateo["id"] if row_mateo else 5
-
-        cur.execute("SELECT a.id FROM ALUMNO a JOIN USUARIO u ON a.usuario_id = u.id WHERE u.email = 'sofia@sanandres.cl' LIMIT 1")
-        row_sofia = cur.fetchone()
-        sofia_id = row_sofia["id"] if row_sofia else 6
-
-        # 4. Migrar codigos previos de 1° Basico al catalogo oficial de 4 actividades Mineduc (2 Matematicas + 2 Lenguaje)
-        cur.execute("UPDATE ACTIVIDAD SET codigo_frontend = 'act-mat-2' WHERE codigo_frontend = 'act-1'")
-        cur.execute("UPDATE ACTIVIDAD SET codigo_frontend = 'act-len-1' WHERE codigo_frontend = 'act-2'")
-        cur.execute("UPDATE ACTIVIDAD SET codigo_frontend = 'act-len-2' WHERE codigo_frontend = 'act-4'")
-        cur.execute("UPDATE ACTIVIDAD SET codigo_frontend = NULL WHERE codigo_frontend = 'act-3'")
-
-        # Catalogo oficial de actividades de Mateo (1° Basico B: 2 Matematicas y 2 Lenguaje) y Sofia (2° Basico A)
-        catalogo = [
-            # Mateo (1° Basico B - 4 Actividades Oficiales Mineduc)
-            {
-                "codigo": "act-conteo",
-                "curso_id": curso_1b_id,
-                "alumno_id": mateo_id,
-                "asignatura": "Matemáticas",
-                "titulo": "Misión Conteo Mágico: Cuenta del 1 al 10 con Robot Leo",
-                "descripcion": "Desafío interactivo de voz (Mineduc MA01 OA 01). Cuenta en voz alta y en orden ascendente del uno al diez para iluminar tus tarjetas.",
-                "fecha_entrega": "2026-10-16",
-                "ponderacion": 25.0,
-                "dificultad": "1° Básico • MA01 OA 01",
-                "tiempo_estimado": "5 min",
-                "cantidad_preguntas": 10,
-                "urgente": True,
-                "estado_inicial": "Pendiente",
-                "progreso_inicial": 0,
-                "calificacion_inicial": None,
-                "comentarios_inicial": "Actividad de conteo secuencial pendiente de realizar.",
-                "tiempo_minutos": 5
-            },
-            {
-                "codigo": "act-mat-2",
-                "curso_id": curso_1b_id,
-                "alumno_id": mateo_id,
-                "asignatura": "Matemáticas",
-                "titulo": "El Bosque de los Números: Sumas hasta el 10 con Voz",
-                "descripcion": "Adiciones progresivas hasta el 10 con apoyo pictórico y simbólico (Mineduc MA01 OA 09 - Modelo COPISI). Escucha cada problema y responde con tu voz.",
-                "fecha_entrega": "2026-10-18",
-                "ponderacion": 25.0,
-                "dificultad": "1° Básico • MA01 OA 09",
-                "tiempo_estimado": "8 min",
-                "cantidad_preguntas": 5,
-                "urgente": True,
-                "estado_inicial": "Pendiente",
-                "progreso_inicial": 0,
-                "calificacion_inicial": None,
-                "comentarios_inicial": "Actividad de adición hasta el 10 pendiente de realizar.",
-                "tiempo_minutos": 8
-            },
-            {
-                "codigo": "act-len-1",
-                "curso_id": curso_1b_id,
-                "alumno_id": mateo_id,
-                "asignatura": "Lenguaje y Comunicación",
-                "titulo": "Caza de Sonidos: Sonido Inicial con M, P, L y S",
-                "descripcion": "Conciencia fonológica e identificación de fonemas y sílabas iniciales (Mineduc LE01 OA 03 - Leo Primero). Escucha y responde hablando.",
-                "fecha_entrega": "2026-10-19",
-                "ponderacion": 25.0,
-                "dificultad": "1° Básico • LE01 OA 03",
-                "tiempo_estimado": "8 min",
-                "cantidad_preguntas": 5,
-                "urgente": False,
-                "estado_inicial": "Pendiente",
-                "progreso_inicial": 0,
-                "calificacion_inicial": None,
-                "comentarios_inicial": "Actividad de conciencia fonológica pendiente de realizar.",
-                "tiempo_minutos": 8
-            },
-            {
-                "codigo": "act-len-2",
-                "curso_id": curso_1b_id,
-                "alumno_id": mateo_id,
-                "asignatura": "Lenguaje y Comunicación",
-                "titulo": "Cuentos que Hablan: La Zorra y las Uvas",
-                "descripcion": "Comprensión oral de textos narrados (Mineduc LE01 OA 18). Escucha la fábula y responde con tus propias palabras a través del micrófono.",
-                "fecha_entrega": "2026-10-20",
-                "ponderacion": 25.0,
-                "dificultad": "1° Básico • LE01 OA 18",
-                "tiempo_estimado": "10 min",
-                "cantidad_preguntas": 3,
-                "urgente": False,
-                "estado_inicial": "Pendiente",
-                "progreso_inicial": 0,
-                "calificacion_inicial": None,
-                "comentarios_inicial": "Actividad de comprensión oral de relatos pendiente de realizar.",
-                "tiempo_minutos": 10
-            },
-            # Sofia (2° Basico A)
-            {
-                "codigo": "act-sofia-1",
-                "curso_id": curso_2a_id,
-                "alumno_id": sofia_id,
-                "asignatura": "Lenguaje y Comunicación",
-                "titulo": "Fábulas Clásicas: La Zorra y las Uvas (Comprensión con Voz)",
-                "descripcion": "Escucha la narración hablada de la fábula y descubre la enseñanza de la historia respondiendo por voz.",
-                "fecha_entrega": "2026-10-17",
-                "ponderacion": 25.0,
-                "dificultad": "2° Básico • LE02 OA 18",
-                "tiempo_estimado": "10 min",
-                "cantidad_preguntas": 3,
-                "urgente": True,
-                "estado_inicial": "Pendiente",
-                "progreso_inicial": 0,
-                "calificacion_inicial": None,
-                "comentarios_inicial": "Pendiente de realizar.",
-                "tiempo_minutos": 10
-            },
-            {
-                "codigo": "act-sofia-2",
-                "curso_id": curso_2a_id,
-                "alumno_id": sofia_id,
-                "asignatura": "Matemáticas",
-                "titulo": "El Reino de las Tablas: Multiplicando por 2 y por 5",
-                "descripcion": "Practica el conteo reiterado y las primeras tablas de multiplicar con preguntas habladas.",
-                "fecha_entrega": "2026-10-18",
-                "ponderacion": 25.0,
-                "dificultad": "2° Básico • MA02 OA 11",
-                "tiempo_estimado": "12 min",
-                "cantidad_preguntas": 5,
-                "urgente": False,
-                "estado_inicial": "Pendiente",
-                "progreso_inicial": 0,
-                "calificacion_inicial": None,
-                "comentarios_inicial": "Pendiente de realizar.",
-                "tiempo_minutos": 12
-            },
-            {
-                "codigo": "act-sofia-3",
-                "curso_id": curso_2a_id,
-                "alumno_id": sofia_id,
-                "asignatura": "Lenguaje y Comunicación",
-                "titulo": "Lectura de Oraciones y Reglas de Puntuación",
-                "descripcion": "Identificación de mayúsculas al inicio y punto final al terminar una idea.",
-                "fecha_entrega": "2026-10-19",
-                "ponderacion": 25.0,
-                "dificultad": "2° Básico • LE02 OA 21",
-                "tiempo_estimado": "12 min",
-                "cantidad_preguntas": 5,
-                "urgente": False,
-                "estado_inicial": "En progreso",
-                "progreso_inicial": 60,
-                "calificacion_inicial": None,
-                "comentarios_inicial": "En desarrollo por la alumna (60%).",
-                "tiempo_minutos": 12
-            },
-            {
-                "codigo": "act-sofia-4",
-                "curso_id": curso_2a_id,
-                "alumno_id": sofia_id,
-                "asignatura": "Matemáticas",
-                "titulo": "Resolución de Problemas: Sumas con Reserva hasta el 50",
-                "descripcion": "Ejercicios guiados de cálculo mental y sumas con canje hasta el número 50.",
-                "fecha_entrega": "2026-10-11",
-                "ponderacion": 25.0,
-                "dificultad": "2° Básico • MA02 OA 09",
-                "tiempo_estimado": "14 min",
-                "cantidad_preguntas": 5,
-                "urgente": False,
-                "estado_inicial": "Entregada",
-                "progreso_inicial": 100,
-                "calificacion_inicial": 6.4,
-                "comentarios_inicial": "Ejercicios completados correctamente.",
-                "tiempo_minutos": 14
-            }
-        ]
-
-        for item in catalogo:
-            # Buscar por codigo_frontend o por titulo
-            cur.execute(
-                "SELECT id FROM ACTIVIDAD WHERE codigo_frontend = %s OR LOWER(titulo) = LOWER(%s) LIMIT 1",
-                (item["codigo"], item["titulo"])
-            )
-            act_row = cur.fetchone()
-            if act_row:
-                act_id = act_row["id"]
-                cur.execute(
-                    """UPDATE ACTIVIDAD
-                       SET titulo = %s, descripcion = %s, codigo_frontend = %s, asignatura = %s, dificultad = %s,
-                           tiempo_estimado = %s, cantidad_preguntas = %s, ponderacion = %s
-                       WHERE id = %s""",
-                    (
-                        item["titulo"], item["descripcion"], item["codigo"], item["asignatura"], item["dificultad"],
-                        item["tiempo_estimado"], item["cantidad_preguntas"], item["ponderacion"],
-                        act_id
-                    )
-                )
-            else:
-                cur.execute(
-                    """INSERT INTO ACTIVIDAD
-                       (curso_id, profesor_usuario_id, titulo, descripcion, fecha_entrega, ponderacion,
-                        asignatura, codigo_frontend, dificultad, tiempo_estimado, cantidad_preguntas, urgente)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-                    (
-                        item["curso_id"], profe_id, item["titulo"], item["descripcion"],
-                        item["fecha_entrega"], item["ponderacion"], item["asignatura"],
-                        item["codigo"], item["dificultad"], item["tiempo_estimado"],
-                        item["cantidad_preguntas"], item["urgente"]
-                    )
-                )
-                act_id = cur.lastrowid
-
-            # Asegurar registro de estado en ENTREGA para el alumno si no existe
-            cur.execute(
-                "SELECT id, estado FROM ENTREGA WHERE actividad_id = %s AND alumno_id = %s LIMIT 1",
-                (act_id, item["alumno_id"])
-            )
-            ent_row = cur.fetchone()
-            if not ent_row:
-                cur.execute(
-                    """INSERT INTO ENTREGA
-                       (actividad_id, alumno_id, fecha_entrega, calificacion, comentarios, estado, progreso, tiempo_minutos)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
-                    (
-                        act_id, item["alumno_id"], item["fecha_entrega"],
-                        item["calificacion_inicial"], item["comentarios_inicial"],
-                        item["estado_inicial"], item["progreso_inicial"], item["tiempo_minutos"]
-                    )
-                )
-
-        # Asegurar asignatura en actividades antiguas (ej. id 5 'La Casa de las Letras')
-        cur.execute("UPDATE ACTIVIDAD SET asignatura = 'Lenguaje y Comunicación' WHERE titulo LIKE '%Letras%' OR titulo LIKE '%Lectura%' OR titulo LIKE '%Fábulas%' OR titulo LIKE '%Cuentos%' OR titulo LIKE '%Sonidos%'")
-
-        conn.commit()
-        cur.close()
-    except Exception as e:
-        print(f"[DB SYNC] Aviso sincronizando esquema de estados de actividades: {e}")
-    finally:
-        if conn and conn.is_connected():
-            conn.close()
+class AlumnoAsignacionItem(BaseModel):
+    alumno_id: int
+    habilitado: bool = True
+    fecha_entrega_especial: Optional[str] = None
+    es_pie: Optional[bool] = False
+    modo_voz: Optional[str] = "Activo (Robot Leo)"
 
 
-# Ejecutar sincronizacion al cargar el modulo
-ensure_activity_states_schema()
+class AsignarActividadRequest(BaseModel):
+    curso_id: int = 3
+    profesor_usuario_id: int = 12
+    actividad_id: Optional[int] = None
+    codigo_frontend: Optional[str] = None
+    titulo: str
+    descripcion: Optional[str] = None
+    asignatura: Optional[str] = "Matemáticas"
+    oa_codigo: Optional[str] = "MA01 OA 01"
+    fecha_apertura: Optional[str] = None
+    fecha_entrega_general: str
+    fecha_entrega_pie: Optional[str] = None
+    agente_voz_activo: bool = True
+    alumnos: Optional[List[AlumnoAsignacionItem]] = None
 
 
 def resolve_alumno_id(alumno_id: Optional[int], student_code: Optional[str]) -> int:
@@ -389,8 +118,8 @@ def get_actividades_alumno_con_estado(student_ref: str):
                COALESCE(e.tiempo_minutos, 10) as tiempo_minutos
         FROM ACTIVIDAD a
         LEFT JOIN ENTREGA e ON a.id = e.actividad_id AND e.alumno_id = %s
-        WHERE a.curso_id = %s AND a.codigo_frontend IS NOT NULL
-        ORDER BY FIELD(COALESCE(e.estado, 'Pendiente'), 'Pendiente', 'En progreso', 'Entregada'), a.id ASC
+        WHERE a.curso_id = %s AND (a.codigo_frontend IS NOT NULL OR e.id IS NOT NULL)
+        ORDER BY FIELD(COALESCE(e.estado, 'Pendiente'), 'Pendiente', 'En progreso', 'Entregada'), a.urgente DESC, a.id ASC
     """
     rows = execute_query(query, (alumno_id, curso_id))
     return {
@@ -568,3 +297,163 @@ def create_actividad(nueva: ActividadCreate):
         commit=True
     )
     return {"message": "Actividad creada exitosamente", "actividad_id": result["last_id"]}
+
+
+@router.post("/asignar")
+def asignar_actividad_curso(payload: AsignarActividadRequest):
+    """
+    Asigna una actividad del catálogo MINEDUC a los alumnos seleccionados del curso:
+    1. Crea o actualiza el registro en ACTIVIDAD.
+    2. Crea o reinicia los registros en ENTREGA con estado 'Pendiente' (y plazo diferenciado PIE si corresponde).
+    3. Dispara automáticamente registros en NOTIFICACION para que los apoderados reciban la alerta en la app móvil.
+    """
+    titulo_limpio = html.escape(payload.titulo.strip())
+    asignatura_limpia = html.escape((payload.asignatura or "Matemáticas").strip())
+    oa_limpio = html.escape((payload.oa_codigo or "MA01 OA 01").strip())
+    descripcion_limpia = html.escape(payload.descripcion.strip()) if payload.descripcion else f"Actividad oficial Mineduc ({oa_limpio}) con Agente de Voz IA Robot Leo."
+    fecha_gen = (payload.fecha_entrega_general or date.today().strftime("%Y-%m-%d"))[:10]
+    fecha_pie = (payload.fecha_entrega_pie or fecha_gen)[:10]
+    curso_id = payload.curso_id or 3
+    profesor_id = payload.profesor_usuario_id or 12
+
+    # 1. Localizar o crear la actividad en la tabla ACTIVIDAD
+    act_row = None
+    if payload.actividad_id:
+        act_row = execute_query("SELECT * FROM ACTIVIDAD WHERE id = %s", (payload.actividad_id,), fetch_one=True)
+    if not act_row and payload.codigo_frontend:
+        act_row = execute_query("SELECT * FROM ACTIVIDAD WHERE codigo_frontend = %s", (payload.codigo_frontend,), fetch_one=True)
+    if not act_row:
+        act_row = execute_query(
+            "SELECT * FROM ACTIVIDAD WHERE LOWER(titulo) = LOWER(%s) AND curso_id = %s LIMIT 1",
+            (titulo_limpio, curso_id),
+            fetch_one=True
+        )
+
+    nivel_label = "2° Básico" if curso_id == 4 else "1° Básico"
+    dificultad_str = f"{nivel_label} • {oa_limpio}"
+    codigo_fe = payload.codigo_frontend or (act_row["codigo_frontend"] if act_row and act_row.get("codigo_frontend") else "act-conteo")
+
+    if act_row:
+        actividad_id = act_row["id"]
+        execute_query(
+            """UPDATE ACTIVIDAD
+               SET fecha_entrega = %s, asignatura = %s, dificultad = %s, urgente = TRUE, codigo_frontend = COALESCE(codigo_frontend, %s)
+               WHERE id = %s""",
+            (fecha_gen, asignatura_limpia, dificultad_str, codigo_fe, actividad_id),
+            commit=True
+        )
+    else:
+        res_act = execute_query(
+            """INSERT INTO ACTIVIDAD
+               (curso_id, profesor_usuario_id, titulo, descripcion, fecha_entrega, ponderacion,
+                asignatura, codigo_frontend, dificultad, tiempo_estimado, cantidad_preguntas, urgente)
+               VALUES (%s, %s, %s, %s, %s, 20.0, %s, %s, %s, '10 min', 5, TRUE)""",
+            (curso_id, profesor_id, titulo_limpio, descripcion_limpia, fecha_gen, asignatura_limpia, codigo_fe, dificultad_str),
+            commit=True
+        )
+        actividad_id = res_act["last_id"]
+
+    # 2. Determinar nómina de alumnos a asignar
+    alumnos_items = payload.alumnos or []
+    if not alumnos_items:
+        rows_al = execute_query("SELECT id FROM ALUMNO")
+        alumnos_items = [
+            AlumnoAsignacionItem(alumno_id=r["id"], habilitado=True, es_pie=(r["id"] in (3, 1)))
+            for r in rows_al
+        ]
+
+    entregas_creadas = 0
+    notificaciones_creadas = 0
+    apoderados_notificados = set()
+    ahora_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    for item in alumnos_items:
+        if not item.habilitado:
+            continue
+
+        aid = int(item.alumno_id)
+        plazo_alumno = (item.fecha_entrega_especial or (fecha_pie if item.es_pie else fecha_gen))[:10]
+        comentario_asignacion = (
+            f"Asignada con adecuación PIE (Plazo diferenciado: {plazo_alumno}) • {item.modo_voz or 'Audio Lento'}"
+            if item.es_pie else
+            f"Asignada por docente • Plazo: {plazo_alumno} • {item.modo_voz or 'Activo (Robot Leo)'}"
+        )
+
+        existente = execute_query(
+            "SELECT id FROM ENTREGA WHERE actividad_id = %s AND alumno_id = %s LIMIT 1",
+            (actividad_id, aid),
+            fetch_one=True
+        )
+        if existente:
+            execute_query(
+                """UPDATE ENTREGA
+                   SET fecha_entrega = %s, calificacion = NULL, comentarios = %s, estado = 'Pendiente', progreso = 0
+                   WHERE id = %s""",
+                (plazo_alumno, comentario_asignacion, existente["id"]),
+                commit=True
+            )
+        else:
+            execute_query(
+                """INSERT INTO ENTREGA
+                   (actividad_id, alumno_id, fecha_entrega, calificacion, comentarios, estado, progreso, tiempo_minutos)
+                   VALUES (%s, %s, %s, NULL, %s, 'Pendiente', 0, 10)""",
+                (actividad_id, aid, plazo_alumno, comentario_asignacion),
+                commit=True
+            )
+        entregas_creadas += 1
+
+        # 3. Buscar apoderado(s) del alumno y crear registro en NOTIFICACION
+        apo_rows = execute_query(
+            """SELECT aa.apoderado_usuario_id, u.nombre as alumno_nombre
+               FROM ALUMNO a
+               JOIN USUARIO u ON a.usuario_id = u.id
+               LEFT JOIN ALUMNO_APODERADO aa ON a.id = aa.alumno_id
+               WHERE a.id = %s""",
+            (aid,)
+        )
+        for apo in apo_rows:
+            apo_id = apo.get("apoderado_usuario_id")
+            al_nombre = apo.get("alumno_nombre") or "su pupilo"
+            if apo_id:
+                notif_titulo = f"Nueva Actividad Asignada: {titulo_limpio}"
+                notif_contenido = (
+                    f"La profesora jefe ha asignado la actividad '{titulo_limpio}' ({asignatura_limpia} • {oa_limpio}) "
+                    f"para {al_nombre}. Fecha límite de entrega: {plazo_alumno}. Disponible con el tutor de voz Robot Leo."
+                )
+                execute_query(
+                    """INSERT INTO NOTIFICACION (usuario_id, tipo, titulo, contenido, fecha_creacion, estado)
+                       VALUES (%s, 'urgente', %s, %s, %s, 'PENDIENTE')""",
+                    (apo_id, notif_titulo, notif_contenido, ahora_str),
+                    commit=True
+                )
+                notificaciones_creadas += 1
+                apoderados_notificados.add(apo_id)
+
+    # Garantizar que el apoderado demo titular (Carolina Tapia, id=13) reciba la alerta si no estaba en la lista
+    if 13 not in apoderados_notificados and entregas_creadas > 0:
+        notif_titulo = f"Nueva Actividad Asignada: {titulo_limpio}"
+        notif_contenido = (
+            f"La profesora jefe ha asignado la actividad '{titulo_limpio}' ({asignatura_limpia} • {oa_limpio}) "
+            f"para Mateo González. Fecha límite de entrega: {fecha_gen}. Disponible con el tutor de voz Robot Leo."
+        )
+        execute_query(
+            """INSERT INTO NOTIFICACION (usuario_id, tipo, titulo, contenido, fecha_creacion, estado)
+               VALUES (13, 'urgente', %s, %s, %s, 'PENDIENTE')""",
+            (notif_titulo, notif_contenido, ahora_str),
+            commit=True
+        )
+        notificaciones_creadas += 1
+
+    return {
+        "success": True,
+        "message": "Actividad asignada y notificaciones enviadas exitosamente a los apoderados",
+        "actividad_id": actividad_id,
+        "codigo_frontend": codigo_fe,
+        "titulo": titulo_limpio,
+        "asignatura": asignatura_limpia,
+        "oa_codigo": oa_limpio,
+        "fecha_entrega_general": fecha_gen,
+        "fecha_entrega_pie": fecha_pie,
+        "entregas_creadas": entregas_creadas,
+        "notificaciones_enviadas": notificaciones_creadas
+    }

@@ -78,7 +78,7 @@ def evaluar_respuesta_respaldo_semantico(payload: EvaluarRespuestaRequest) -> Re
             retroalimentacion="No logré escuchar bien tu respuesta. Presiona el micrófono y cuéntame con voz fuerte y clara."
         )
 
-    # Palabras clave definidas en la pregunta o por número de pregunta del cuento La Zorra y las Uvas
+    # Palabras clave definidas en la pregunta o por número de pregunta del cuento El Conejo y las Uvas
     keywords = [_normalize_text(k) for k in (payload.palabras_clave_respaldo or []) if k]
 
     if not keywords:
@@ -96,9 +96,9 @@ def evaluar_respuesta_respaldo_semantico(payload: EvaluarRespuestaRequest) -> Re
 
     if es_correcto:
         mensajes_exito = {
-            1: "Excelente respuesta. La zorra quería comer las deliciosas uvas moradas del bosque.",
+            1: "Excelente respuesta. El conejo quería comer las deliciosas uvas moradas del bosque.",
             2: "Muy bien dicho. Las uvas estaban demasiado altas en la rama y por eso no las alcanzó.",
-            3: "Extraordinario. La zorra dijo que estaban verdes cuando se cansó de saltar.",
+            3: "Extraordinario. El conejo dijo que estaban verdes cuando se cansó de saltar.",
         }
         return ResultadoBooleanoIA(
             es_correcto=True,
@@ -110,8 +110,8 @@ def evaluar_respuesta_respaldo_semantico(payload: EvaluarRespuestaRequest) -> Re
     else:
         pistas = {
             1: "Escucha otra vez esa parte: era una fruta pequeña y morada que crecía en un racimo. Inténtalo de nuevo.",
-            2: "Piensa en dónde colgaban las uvas: la zorra saltaba mucho porque estaban muy arriba. Dilo con tus palabras.",
-            3: "Recuerda qué color dijo la zorra al final para consolarse antes de irse. Vuelve a intentarlo.",
+            2: "Piensa en dónde colgaban las uvas: el conejo saltaba mucho porque estaban muy arriba. Dilo con tus palabras.",
+            3: "Recuerda qué color dijo el conejo al final para consolarse antes de irse. Vuelve a intentarlo.",
         }
         return ResultadoBooleanoIA(
             es_correcto=False,

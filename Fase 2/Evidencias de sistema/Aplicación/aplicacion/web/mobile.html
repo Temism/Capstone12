@@ -1,20 +1,20 @@
 <!DOCTYPE html>
-<html lang="es" data-theme="navy">
+<html lang="es" class="h-full">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>EDUCONNECT Móvil - Colegio San Andrés (Profesor y Apoderado)</title>
-  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <title>EduConnect MÃ³vil - Alumno, Profesor y Apoderado</title>
+
   <!-- Google Fonts: Inter -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-  
+
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
-      darkMode: 'class',
       theme: {
         extend: {
           fontFamily: {
@@ -25,7 +25,7 @@
           },
           keyframes: {
             fadeIn: {
-              '0%': { opacity: '0', transform: 'translateY(3px)' },
+              '0%': { opacity: '0', transform: 'translateY(4px)' },
               '100%': { opacity: '1', transform: 'translateY(0)' },
             }
           }
@@ -37,14 +37,27 @@
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
 
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-  <!-- Custom Styles -->
+  <!-- Custom Mobile Styles -->
   <link rel="stylesheet" href="css/styles.css">
 
   <style>
-    /* Mobile Device Frame Simulation when viewed on large screens */
+    /* Soporte Safe Area en Dispositivos MÃ³viles y Notch */
+    body {
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+      padding-left: env(safe-area-inset-left, 0px);
+      padding-right: env(safe-area-inset-right, 0px);
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .safe-top-padding {
+      padding-top: max(env(safe-area-inset-top, 0px), 16px);
+    }
+
+    /* SimulaciÃ³n de telÃ©fono si se prueba en navegador de escritorio */
     @media (min-width: 640px) {
       body {
         background-color: #0f172a;
@@ -53,16 +66,17 @@
         align-items: center;
         justify-content: flex-start;
         min-height: 100vh;
-        padding: 24px 0;
+        padding: 20px 0;
       }
       .mobile-device-shell {
         width: 412px;
         min-height: 840px;
-        max-height: 90vh;
+        max-height: 92vh;
         background: #f8fafc;
         border-radius: 40px;
         box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 0 10px #1e293b, 0 0 0 12px #334155;
         overflow-y: auto;
+        overflow-x: hidden;
         position: relative;
         display: flex;
         flex-direction: column;
@@ -78,7 +92,10 @@
       }
       .mobile-device-shell {
         width: 100%;
-        min-height: 100vh;
+        height: 100vh;
+        overflow-y: auto;
+        overflow-x: hidden;
+        position: relative;
         display: flex;
         flex-direction: column;
       }
@@ -87,7 +104,7 @@
       }
     }
 
-    /* Hide scrollbar for clean app feel */
+    /* Ocultar barra de desplazamiento */
     .no-scrollbar::-webkit-scrollbar {
       display: none;
     }
@@ -95,31 +112,116 @@
       -ms-overflow-style: none;
       scrollbar-width: none;
     }
+
+    /* [REQ-03] Animaciones Interactivas del Avatar Robot Leo */
+    @keyframes leoTalkMouth {
+      0%, 100% { transform: scaleY(0.72); }
+      50% { transform: scaleY(1.08); }
+    }
+    @keyframes leoSoundWave {
+      0% { transform: scale(0.85); opacity: 0.9; }
+      100% { transform: scale(1.45); opacity: 0; }
+    }
+    @keyframes leoAntennaGlow {
+      0%, 100% { transform: scale(1); filter: drop-shadow(0 0 6px #34d399); }
+      50% { transform: scale(1.35); filter: drop-shadow(0 0 18px #10b981); }
+    }
+    @keyframes leoListenTilt {
+      0%, 100% { transform: rotate(-4deg) translateY(-2px); }
+      50% { transform: rotate(-6deg) translateY(-5px); }
+    }
+    @keyframes leoCelebrateBounce {
+      0%, 100% { transform: translateY(0) scale(1); }
+      40% { transform: translateY(-14px) scale(1.04); }
+      70% { transform: translateY(-6px) scale(1.02); }
+    }
+    @keyframes leoStarFloat {
+      0%, 100% { transform: translateY(0) rotate(0deg) scale(1); opacity: 1; }
+      50% { transform: translateY(-12px) rotate(18deg) scale(1.25); opacity: 0.9; }
+    }
+    @keyframes leoFloatIdle {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-6px); }
+    }
+
+    .leo-state-speaking .leo-mouth-anim {
+      transform-box: fill-box;
+      transform-origin: center;
+      animation: leoTalkMouth 0.22s infinite ease-in-out;
+    }
+    .leo-state-speaking .leo-wave-ring {
+      transform-origin: center;
+      animation: leoSoundWave 1.2s infinite ease-out;
+    }
+    .leo-state-listening .leo-head-group {
+      transform-origin: 200px 150px;
+      animation: leoListenTilt 1.6s infinite ease-in-out;
+    }
+    .leo-state-listening .leo-antenna-bulb {
+      transform-origin: 200px 28px;
+      animation: leoAntennaGlow 0.8s infinite ease-in-out;
+    }
+    .leo-state-celebrating {
+      animation: leoCelebrateBounce 0.75s infinite ease-in-out;
+    }
+    .leo-state-celebrating .leo-star-burst {
+      animation: leoStarFloat 0.9s infinite ease-in-out;
+    }
+    .leo-state-guiding {
+      animation: leoFloatIdle 2.4s infinite ease-in-out;
+    }
+
+    /* Animaciones de Cambio de Número en Actividad de Conteo (1 al 10) */
+    @keyframes countingNumberPop {
+      0% { transform: scale(0.18) rotate(-15deg) translateY(32px); opacity: 0; }
+      55% { transform: scale(1.22) rotate(5deg) translateY(-8px); opacity: 1; }
+      78% { transform: scale(0.93) rotate(-2deg) translateY(2px); opacity: 1; }
+      100% { transform: scale(1) rotate(0deg) translateY(0px); opacity: 1; }
+    }
+    @keyframes countingCardGlow {
+      0% { background-color: #6ee7b7; border-color: #10b981; transform: scale(1.06); box-shadow: 0 0 28px rgba(16, 185, 129, 0.85); }
+      45% { background-color: #a7f3d0; border-color: #10b981; transform: scale(1.03); box-shadow: 0 0 18px rgba(16, 185, 129, 0.55); }
+      100% { background-color: #fde68a; border-color: #fbbf24; transform: scale(1); box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06); }
+    }
+    @keyframes countingBadgeRise {
+      0% { transform: translateY(14px) scale(0.5); opacity: 0; }
+      30% { transform: translateY(-2px) scale(1.12); opacity: 1; }
+      80% { transform: translateY(-8px) scale(1); opacity: 1; }
+      100% { transform: translateY(-16px) scale(0.85); opacity: 0; }
+    }
+    .counting-number-pop {
+      display: inline-block;
+      animation: countingNumberPop 0.58s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    }
+    .counting-card-anim {
+      animation: countingCardGlow 0.62s ease-out forwards;
+    }
+    .counting-badge-anim {
+      animation: countingBadgeRise 0.62s ease-out forwards;
+    }
   </style>
 </head>
-<body class="antialiased selection:bg-blue-500 selection:text-white">
+<body class="h-full bg-slate-100 antialiased font-sans">
 
-  <!-- Helper Bar on Desktop instructing how to test Ctrl+Shift+C -->
-  <div class="desktop-helper-bar hidden max-w-xl w-full mb-4 px-4 py-2.5 rounded-2xl bg-slate-800 text-slate-200 text-xs font-semibold items-center justify-between border border-slate-700 shadow-lg">
+  <!-- Barra de Ayuda para Pruebas en Desktop -->
+  <div class="desktop-helper-bar hidden max-w-md w-full mb-3 px-4 py-2 rounded-2xl bg-slate-800 text-slate-200 text-xs font-semibold items-center justify-between border border-slate-700 shadow-md">
     <div class="flex items-center gap-2">
       <i data-lucide="smartphone" class="w-4 h-4 text-amber-400"></i>
-      <span>Modo Demostración Móvil: Pulsa <kbd class="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-600 font-mono text-[10px] text-amber-300">Ctrl + Shift + C</kbd> para activar la vista de teléfono en Chrome.</span>
+      <span>App MÃ³vil EduConnect (Alumno, Profesor y Apoderado)</span>
     </div>
-    <a href="index.html" class="px-3 py-1 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-[11px] font-bold transition flex items-center gap-1">
-      <i data-lucide="monitor" class="w-3.5 h-3.5"></i>
-      <span>Volver al Portal</span>
-    </a>
+    <span class="text-[10px] text-amber-300 font-bold">APK / LAN</span>
   </div>
 
-  <!-- Mobile Device Container -->
+  <!-- Contenedor Principal de la App MÃ³vil -->
   <div class="mobile-device-shell no-scrollbar" id="mobile-root">
-    <!-- App rendered dynamically by js/mobile.js -->
+    <!-- Renderizado por js/mobile.js -->
   </div>
 
-  <!-- Application Scripts -->
-  <script src="js/api.js"></script>
+  <!-- Scripts de la AplicaciÃ³n MÃ³vil -->
   <script src="js/data.js"></script>
+  <script src="js/mobile-api.js"></script>
   <script src="js/mobile.js"></script>
 
 </body>
 </html>
+

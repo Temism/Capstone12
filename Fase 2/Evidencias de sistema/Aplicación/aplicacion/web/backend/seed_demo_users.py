@@ -133,7 +133,7 @@ def seed_demo_data():
         (
             curso_2a_id,
             user_ids["profesora@sanandres.cl"],
-            "Fábulas Clásicas: La Zorra y las Uvas (Comprensión con Voz)",
+            "Fábulas Clásicas: El Conejo y las Uvas (Comprensión con Voz)",
             "Lectura comprensiva donde el tutor IA formula preguntas para extraer la moraleja de la historia.",
             "2026-10-16",
             25.0

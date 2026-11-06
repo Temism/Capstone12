@@ -78,7 +78,7 @@ def seed_messaging():
 
     c2_mensajes = [
         (u_profesora, "Estimada apoderada, le informo que Sofía obtuvo nota 6.5 en su comprensión lectora de fábulas. Ha mostrado excelente participación oral y comprensión de moralejas.", c2_fecha + timedelta(hours=2)),
-        (u_apoderado, "Muchas gracias por informarme profesora. Sofía disfrutó mucho la historia de la zorra y las uvas. Continuaremos reforzando la lectura compartida los fines de semana.", c2_fecha + timedelta(hours=4)),
+        (u_apoderado, "Muchas gracias por informarme profesora. Sofía disfrutó mucho la historia del conejo y las uvas. Continuaremos reforzando la lectura compartida los fines de semana.", c2_fecha + timedelta(hours=4)),
         (u_profesora, "Perfecto, esa constancia en el hogar se nota de inmediato en su vocabulario y dicción.", c2_fecha + timedelta(hours=5))
     ]
     for rem, cont, f_env in c2_mensajes:

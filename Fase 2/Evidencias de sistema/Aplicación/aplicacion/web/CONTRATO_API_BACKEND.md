@@ -39,7 +39,7 @@ Para que las vistas de **Actividades**, **Reportería**, **Mensajería**, **Aler
      - `"act-conteo"`: *Misión Conteo Mágico: Cuenta del 1 al 10 con Robot Leo* (`Matemáticas` — MA01 OA 01)
      - `"act-mat-2"`: *El Bosque de los Números: Sumas hasta el 10 con Voz* (`Matemáticas` — MA01 OA 09)
      - `"act-len-1"`: *Caza de Sonidos: Sonido Inicial con M, P, L y S* (`Lenguaje y Comunicación` — LE01 OA 03)
-     - `"act-len-2"`: *Cuentos que Hablan: La Zorra y las Uvas* (`Lenguaje y Comunicación` — LE01 OA 18)
+     - `"act-len-2"`: *Cuentos que Hablan: El Conejo y las Uvas* (`Lenguaje y Comunicación` — LE01 OA 18)
    - **2° Básico A (`curso_id = 4`):**
      - `"act-sofia-1"`, `"act-sofia-2"`, `"act-sofia-3"`, `"act-sofia-4"`.
 
@@ -530,7 +530,7 @@ Para que las vistas de **Actividades**, **Reportería**, **Mensajería**, **Aler
       {
         "actividad_id": 10,
         "codigo_frontend": "act-len-2",
-        "titulo": "Cuentos que Hablan: La Zorra y las Uvas",
+        "titulo": "Cuentos que Hablan: El Conejo y las Uvas",
         "descripcion": "Comprensión oral de textos narrados (Mineduc LE01 OA 18)...",
         "asignatura": "Lenguaje y Comunicación",
         "fecha_entrega": "2026-10-20",

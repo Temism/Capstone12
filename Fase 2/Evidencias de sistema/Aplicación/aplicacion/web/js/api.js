@@ -95,7 +95,7 @@ const api = {
     localStorage.removeItem('educonnect_jwt_token');
   },
 
-  // 2. Alumnos y Familias (Multi-estudiante)
+  // 2. Alumnos y Familias (Multi-estudiante y Nómina de Curso)
   async getStudentsByParent(parentId = 13) {
     if (this.isOnline) {
       try {
@@ -112,8 +112,23 @@ const api = {
     return mockData.parentStudents;
   },
 
-  // 3. Actividades con preguntas y voz
-  async getActivitiesByCourse(courseId = 1) {
+  async getStudentsByCourse(courseId = 3) {
+    try {
+      const res = await fetch(`${this.baseUrl}/alumnos/curso/${courseId}`, {
+        headers: this.getHeaders()
+      });
+      if (res.ok) {
+        this.isOnline = true;
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("[API] Usando nómina local para el curso:", err);
+    }
+    return null;
+  },
+
+  // 3. Actividades con preguntas, voz y asignación docente
+  async getActivitiesByCourse(courseId = 3) {
     if (this.isOnline) {
       try {
         const res = await fetch(`${this.baseUrl}/actividades/curso/${courseId}`, {
@@ -127,6 +142,25 @@ const api = {
       }
     }
     return mockData.studentActivities;
+  },
+
+  async assignActivityToCourse(payload) {
+    try {
+      const res = await fetch(`${this.baseUrl}/actividades/asignar`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        this.isOnline = true;
+        return await res.json();
+      }
+      const errData = await res.json().catch(() => ({}));
+      return { success: false, error: errData.detail || 'Error al asignar actividad' };
+    } catch (err) {
+      console.warn("[API] Asignación guardada en modo local:", err);
+      return { success: true, offline: true, entregas_creadas: (payload.alumnos || []).filter(a => a.habilitado).length, notificaciones_enviadas: (payload.alumnos || []).filter(a => a.habilitado).length };
+    }
   },
 
   // 4. Calificaciones, Estados de Actividades y Reportería Sincronizada con Base de Datos

@@ -99,13 +99,13 @@ const actividadesView = {
             </div>
             <div>
               <span class="text-[10px] uppercase font-black text-amber-800 tracking-wider block">Estrellitas Ganadas</span>
-              <span class="text-sm font-black text-slate-900">${8 + (completedCount * 10)} Estrellas</span>
+              <span class="text-sm font-black text-slate-900">${completedCount * 10} Estrellas</span>
             </div>
           </div>
         </div>
 
         <!-- HERO BANNER: Centro Lúdico de Robot Leo (Accesible, Visual y con Audio para Niños) -->
-        <div class="relative overflow-hidden rounded-3xl p-6 sm:p-7 theme-header text-white shadow-lg border border-white/10">
+        <div class="relative overflow-hidden rounded-3xl p-6 sm:p-7 bg-gradient-to-r from-blue-800 via-indigo-700 to-blue-700 text-white shadow-lg border border-white/15">
           <div class="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
             <div class="space-y-3 max-w-xl">
               <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md text-xs font-black text-amber-300">
@@ -142,7 +142,7 @@ const actividadesView = {
                 onclick="app.openVoiceModal('${(featuredTask.title || '').replace(/'/g, "\\'")}', '${featuredTask.id || 'act-conteo'}')"
                 class="px-6 py-4 rounded-2xl bg-amber-400 hover:bg-amber-300 active:scale-98 text-slate-950 font-black text-base shadow-lg transition-all flex items-center gap-3.5 group cursor-pointer"
               >
-                <div class="w-12 h-12 rounded-xl bg-slate-950 text-amber-400 flex items-center justify-center shadow-xs">
+                <div class="w-12 h-12 rounded-xl bg-indigo-900 text-amber-400 flex items-center justify-center shadow-xs">
                   <i data-lucide="bot" class="w-7 h-7 text-amber-400"></i>
                 </div>
                 <div class="text-left">
@@ -200,7 +200,15 @@ const actividadesView = {
 
         <!-- Activities Cards Grid (Adaptado a 1° y 2° Básico) -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-          ${activities.map(act => {
+          ${activities.length === 0 ? `
+            <div class="md:col-span-2 bg-white rounded-3xl p-8 border border-dashed border-slate-300 text-center space-y-2">
+              <div class="w-12 h-12 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center mx-auto">
+                <i data-lucide="bot" class="w-6 h-6"></i>
+              </div>
+              <h3 class="font-black text-slate-800 text-base">No tienes actividades asignadas en este momento (0 asignadas)</h3>
+              <p class="text-xs text-slate-500 max-w-md mx-auto">Cuando tu profesora asigne una actividad desde el portal docente, aparecerá aquí lista para jugar con Robot Leo.</p>
+            </div>
+          ` : activities.map(act => {
             const safeTitle = (act.title || '').replace(/'/g, "\\'");
             const statusBadgeClass = act.status === 'Entregada'
               ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
@@ -284,14 +292,17 @@ const actividadesView = {
                   </div>
                 ` : ''}
 
-                <!-- Score if finished -->
+                <!-- Celebration if finished (sin mostrar puntajes ni notas al alumno) -->
                 ${act.status === 'Entregada' ? `
                   <div class="mt-4 p-3 rounded-xl bg-emerald-50/80 border border-emerald-200 flex items-center justify-between text-xs">
                     <span class="font-bold text-emerald-900 flex items-center gap-1.5">
-                      <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600"></i>
-                      Nota obtenida:
+                      <i data-lucide="award" class="w-4 h-4 text-emerald-600"></i>
+                      ¡Misión Completada!
                     </span>
-                    <span class="font-black text-emerald-700 text-base">${act.score || '7.0 / 7.0'} (Felicitaciones)</span>
+                    <span class="font-black text-emerald-700 text-sm flex items-center gap-1">
+                      <i data-lucide="star" class="w-4 h-4 text-amber-500 fill-amber-400"></i>
+                      <span>+10 Estrellas Doradas</span>
+                    </span>
                   </div>
                 ` : ''}
               </div>

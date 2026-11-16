@@ -346,7 +346,7 @@ const components = {
       var countVal = appState.rhythmCountdownValue || 3;
       var countLabel = typeof countVal === 'number' && countVal > 0 ? String(countVal) : '¡VAMOS!';
       return ''
-        + '<div class="bg-gradient-to-b from-blue-900 to-slate-900 text-white border-2 border-amber-400 rounded-3xl p-6 text-center shadow-lg flex flex-col items-center justify-center min-h-[225px] space-y-3">'
+        + '<div class="bg-gradient-to-b from-blue-700 via-indigo-700 to-slate-800 text-white border-2 border-amber-400 rounded-3xl p-6 text-center shadow-lg flex flex-col items-center justify-center min-h-[225px] space-y-3">'
         +   '<span class="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider">'
         +     '<i data-lucide="volume-2" class="w-3.5 h-3.5"></i>'
         +     '<span>¡Atento, que ya empezamos!</span>'
@@ -387,8 +387,8 @@ const components = {
         : baseItem.label;
 
       var cardBorderClass = voiceHeardNow
-        ? 'border-emerald-500 ring-4 ring-emerald-300/70 bg-gradient-to-b from-emerald-50/90 via-white to-emerald-50/40'
-        : 'border-amber-400 ring-4 ring-amber-200/70 bg-gradient-to-b from-amber-50/80 via-white to-slate-50';
+        ? 'border-emerald-500 ring-4 ring-emerald-300/70 bg-gradient-to-b from-emerald-200/85 via-emerald-50/60 to-white'
+        : 'border-sky-400 ring-4 ring-sky-200/80 bg-gradient-to-b from-sky-200/85 via-blue-50/70 to-white';
 
       return ''
         + '<div class="border-2 rounded-3xl p-4 sm:p-5 text-center shadow-md relative overflow-hidden transition-all duration-200 min-h-[225px] flex flex-col justify-between ' + cardBorderClass + '">'
@@ -805,10 +805,17 @@ const components = {
 
     // En las actividades ritmicas el boton principal ya vive en el escenario central, por lo que ocultamos la caja duplicada
     var voiceCardDisplayClass = isRhythmType ? 'hidden' : 'flex';
+    var isMicActive = Boolean(window.app && (app.isRecordingVoice || app.rhythmState === 'playing'));
+    var activitySurfaceBg = isMicActive
+      ? 'bg-gradient-to-b from-sky-200/85 via-blue-50/70 to-white'
+      : 'bg-gradient-to-b from-blue-50/70 via-slate-50/50 to-white';
+    var actionCardBg = isMicActive
+      ? 'bg-gradient-to-b from-sky-100/90 via-blue-50/50 to-white border-sky-300 ring-2 ring-sky-200/70'
+      : 'bg-white border-slate-200';
 
     return '<div id="voice-ai-modal-backdrop" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 animate-fadeIn">'
       + '<div class="bg-white rounded-3xl shadow-2xl border border-slate-200/90 w-full max-w-5xl overflow-hidden flex flex-col max-h-[96vh]">'
-      + '<div class="theme-header px-5 py-3 text-white flex items-center justify-between flex-shrink-0">'
+      + '<div class="bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-800 px-5 py-3 text-white flex items-center justify-between flex-shrink-0">'
       +   '<div class="flex items-center space-x-3">'
       +     '<div class="w-9 h-9 rounded-xl bg-amber-400 flex items-center justify-center shadow-sm"><i data-lucide="bot" class="w-5 h-5 text-slate-950"></i></div>'
       +     '<div>'
@@ -895,11 +902,11 @@ const components = {
       +   '<div class="flex items-center gap-2.5"><span id="counting-progress-text">' + progressInfo.label + '</span><div class="w-28 sm:w-40 h-2 rounded-full bg-slate-200 overflow-hidden"><div id="counting-progress-bar" class="h-full bg-emerald-500 rounded-full transition-all duration-500" style="width:' + progressInfo.percent + '%"></div></div></div>'
       +   '<button onclick="app.showNoiseDisclaimer()" class="text-xs text-blue-700 hover:underline flex items-center gap-1 font-semibold cursor-pointer"><i data-lucide="volume-2" class="w-3.5 h-3.5"></i><span>Consejos de Micrófono</span></button>'
       + '</div>'
-      + '<div class="px-5 py-3.5 space-y-2.5 flex-1 bg-gradient-to-b from-white to-slate-50/60">'
+      + '<div id="counting-activity-surface" class="px-5 py-3.5 space-y-2.5 flex-1 transition-all duration-300 ' + activitySurfaceBg + '">'
       +   '<div id="activity-dynamic-body" class="space-y-2.5">'
       +     interactiveBodyHtml
       +   '</div>'
-      +   '<div id="voice-action-card" class="p-3 rounded-2xl bg-white border border-slate-200 shadow-2xs flex-col gap-2.5 ' + voiceCardDisplayClass + '">'
+      +   '<div id="voice-action-card" class="p-3 rounded-2xl border shadow-2xs flex-col gap-2.5 transition-all duration-300 ' + actionCardBg + ' ' + voiceCardDisplayClass + '">'
       +     '<div class="flex flex-col sm:flex-row items-center justify-between gap-3">'
       +       '<div class="flex items-center gap-3"><div id="voice-mic-icon-box" class="w-10 h-10 rounded-xl ' + (isCompletedNow ? 'bg-emerald-500' : 'bg-amber-400') + ' flex items-center justify-center shadow-xs flex-shrink-0"><i data-lucide="' + (isCompletedNow ? 'award' : 'mic') + '" class="w-5 h-5 ' + (isCompletedNow ? 'text-white' : 'text-slate-950') + '"></i></div>'
       +       '<div><h4 id="voice-action-title" class="font-extrabold text-slate-900 text-sm">' + actionBoxTitle + '</h4><p id="voice-action-subtitle" class="text-xs text-slate-500">Toca <kbd class="px-1.5 py-0.5 bg-slate-100 rounded border border-slate-300 font-bold text-[11px]">Espacio</kbd> o el botón para hablar</p></div></div>'

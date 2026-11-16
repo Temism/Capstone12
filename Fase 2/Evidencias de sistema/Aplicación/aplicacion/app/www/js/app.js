@@ -9,6 +9,13 @@ const app = {
   selectedPupilIndex: 0, // 0: Mateo (1° Básico), 1: Sofía (2° Básico)
   errorMessage: '',
   showServerModal: false,
+  showPhotoModal: false,
+  photoModalError: '',
+  photoModalStatus: '',
+  isMobileAssignModalOpen: false,
+  mobileModalSelectedCodes: [],
+  mobileAssignModalError: '',
+  isMobileAssigning: false,
   reporteriaData: null,
   isLoadingReporteria: false,
 
@@ -30,6 +37,8 @@ const app = {
   isRecordingVoice: false,
   lastSpokenTranscript: '',
   _recognition: null,
+  _onManualVoiceStop: null,
+  _androidSttSilenceTimer: null,
   _mediaRecorder: null,
   _audioChunks: [],
   _silenceTimer: null,
@@ -39,42 +48,27 @@ const app = {
   chatMode: 'grupal', // 'grupal' | 'individual'
   activeConversacionId: 1,
   mensajesPorConversacion: {},
+  isSendingMobileMsg: false,
+  mobileComSuccessMsg: '',
   _pollTimer: null,
 
   // Estado de Alertas
   filterAlertas: 'todas',
   alertasLocales: [],
   acuseStatus: {},
+  isSendingMobileAlert: false,
+  mobileAlertSuccessMsg: '',
 
   // Nómina de apoderados del curso (Tablero del Profesor)
   apoderadosCurso: [
-    { id: 13, apoderado: 'Carolina Tapia', alumno: 'Mateo González', rut: '19.452.120-K', confirmado: true, fechaAcuse: 'Hoy 11:42' },
-    { id: 4, apoderado: 'Daniela Soto', alumno: 'Benjamín Soto', rut: '18.992.301-4', confirmado: true, fechaAcuse: 'Hoy 12:05' },
-    { id: 5, apoderado: 'Rodrigo Fuentes', alumno: 'Martina Fuentes', rut: '20.104.887-2', confirmado: false, fechaAcuse: 'Pendiente' },
-    { id: 6, apoderado: 'Javiera Contreras', alumno: 'Vicente Contreras', rut: '19.821.554-9', confirmado: false, fechaAcuse: 'Pendiente' },
-    { id: 7, apoderado: 'Gonzalo Morales', alumno: 'Ignacio Morales', rut: '19.330.114-1', confirmado: true, fechaAcuse: 'Ayer 18:20' }
+    { id: 13, apoderado: 'Carolina Tapia', alumno: 'Mateo González', rut: '19.452.120-K', confirmado: false, fechaAcuse: 'Sin alertas activas' },
+    { id: 4, apoderado: 'Daniela Soto', alumno: 'Benjamín Soto', rut: '18.992.301-4', confirmado: false, fechaAcuse: 'Sin alertas activas' },
+    { id: 5, apoderado: 'Rodrigo Fuentes', alumno: 'Martina Fuentes', rut: '20.104.887-2', confirmado: false, fechaAcuse: 'Sin alertas activas' },
+    { id: 6, apoderado: 'Javiera Contreras', alumno: 'Vicente Contreras', rut: '19.821.554-9', confirmado: false, fechaAcuse: 'Sin alertas activas' },
+    { id: 7, apoderado: 'Gonzalo Morales', alumno: 'Ignacio Morales', rut: '19.330.114-1', confirmado: false, fechaAcuse: 'Sin alertas activas' }
   ],
 
-  comunicadosGrupales: [
-    {
-      id: 101,
-      remitenteNombre: 'Tía Marcela Soto (Profesora Jefe)',
-      curso: '1° Básico B',
-      fecha: 'Hoy 08:30',
-      titulo: 'Plan Semanal de Lectura y Conteo Rítmico',
-      contenido: 'Estimadas familias: Durante esta semana reforzaremos el conteo del 1 al 20 y las sílabas iniciales con las dinámicas de ritmo. Por favor repasar en casa 10 minutos al día en un rincón sin ruido ambiente.',
-      confirmado: true
-    },
-    {
-      id: 102,
-      remitenteNombre: 'Tía Marcela Soto (Profesora Jefe)',
-      curso: '1° Básico B',
-      fecha: 'Ayer 15:45',
-      titulo: 'Materiales para Taller de Geometría y Cuerpos',
-      contenido: 'Recordamos traer para este jueves una caja de fósforos vacía y plasticina de cualquier color para construir figuras del plano 2D y 3D en la clase de matemática.',
-      confirmado: false
-    }
-  ],
+  comunicadosGrupales: [],
 
   async init() {
     this.restoreSession();
@@ -98,16 +92,190 @@ const app = {
     this.startPolling();
   },
 
+  getDefaultAvatarUrl(userOrRole) {
+    if (userOrRole && typeof userOrRole === 'object') {
+      if (userOrRole.defaultAvatar) return userOrRole.defaultAvatar;
+      if (window.firebaseDb && typeof window.firebaseDb.getDefaultAvatarForUser === 'function') {
+        return window.firebaseDb.getDefaultAvatarForUser(userOrRole.id || userOrRole.role);
+      }
+    }
+    if (window.firebaseDb && typeof window.firebaseDb.getDefaultAvatarForUser === 'function') {
+      return window.firebaseDb.getDefaultAvatarForUser(userOrRole);
+    }
+    return 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80';
+  },
+
+  getUserAvatarUrl(user) {
+    if (!user) return this.getDefaultAvatarUrl('apoderado');
+    const custom = (user.id && window.firebaseDb && typeof window.firebaseDb.getCustomAvatar === 'function')
+      ? window.firebaseDb.getCustomAvatar(user.id)
+      : null;
+    return custom || user.avatar || this.getDefaultAvatarUrl(user);
+  },
+
+  canEditProfilePhoto() {
+    return Boolean(this.currentUser && ['apoderado', 'profesora', 'admin'].includes(this.currentUser.role));
+  },
+
+  openMobilePhotoModal() {
+    if (!this.canEditProfilePhoto()) return;
+    this.photoModalError = '';
+    this.photoModalStatus = '';
+    this.showPhotoModal = true;
+    this.render();
+  },
+
+  closeMobilePhotoModal() {
+    this.showPhotoModal = false;
+    this.photoModalError = '';
+    this.photoModalStatus = '';
+    this.render();
+  },
+
+  compressMobileImageFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('No se pudo leer la imagen seleccionada.'));
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error('El archivo no es una imagen válida.'));
+        img.onload = () => {
+          const maxSize = 220;
+          let width = img.width || maxSize;
+          let height = img.height || maxSize;
+          if (width > height && width > maxSize) {
+            height = Math.round((height * maxSize) / width);
+            width = maxSize;
+          } else if (height > maxSize) {
+            width = Math.round((width * maxSize) / height);
+            height = maxSize;
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('No se pudo procesar la imagen.'));
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          let out = canvas.toDataURL('image/jpeg', 0.78);
+          if (out.length > 140000) {
+            out = canvas.toDataURL('image/jpeg', 0.58);
+          }
+          resolve(out);
+        };
+        img.src = String(reader.result || '');
+      };
+      reader.readAsDataURL(file);
+    });
+  },
+
+  async applyMobileCustomAvatar(newAvatarUrlOrNull) {
+    if (!this.canEditProfilePhoto()) return;
+    this.photoModalError = '';
+    this.photoModalStatus = 'Guardando foto de perfil...';
+    this.render();
+
+    const defaultUrl = this.getDefaultAvatarUrl(this.currentUser);
+    const resolved = newAvatarUrlOrNull || defaultUrl;
+
+    if (window.firebaseDb && typeof window.firebaseDb.saveCustomAvatar === 'function') {
+      await window.firebaseDb.saveCustomAvatar(this.currentUser.id, newAvatarUrlOrNull || null);
+    }
+
+    this.currentUser = {
+      ...this.currentUser,
+      defaultAvatar: defaultUrl,
+      avatar: resolved
+    };
+
+    try {
+      sessionStorage.setItem('educonnect_session_user', JSON.stringify(this.currentUser));
+      localStorage.setItem('educonnect_session_user', JSON.stringify(this.currentUser));
+    } catch (e) {}
+
+    this.photoModalStatus = newAvatarUrlOrNull ? '¡Foto actualizada correctamente!' : 'Foto por defecto restaurada.';
+    setTimeout(() => {
+      if (this.showPhotoModal) {
+        this.showPhotoModal = false;
+        this.photoModalStatus = '';
+        this.render();
+      }
+    }, 650);
+    this.render();
+  },
+
+  async handleMobilePhotoFile(inputEl) {
+    const file = inputEl && inputEl.files && inputEl.files[0];
+    if (!file) return;
+    if (!String(file.type || '').startsWith('image/')) {
+      this.photoModalError = 'Selecciona un archivo de imagen válido (JPG, PNG o WebP).';
+      this.render();
+      return;
+    }
+    try {
+      const dataUrl = await this.compressMobileImageFile(file);
+      if (dataUrl.length > 148000) {
+        this.photoModalError = 'La imagen es demasiado pesada. Elige una foto más liviana.';
+        this.render();
+        return;
+      }
+      await this.applyMobileCustomAvatar(dataUrl);
+    } catch (err) {
+      this.photoModalError = (err && err.message) ? err.message : 'No se pudo procesar la foto seleccionada.';
+      this.render();
+    }
+  },
+
+  async saveMobilePhotoUrl() {
+    const input = document.getElementById('mobile-photo-url-input');
+    const url = input ? input.value.trim() : '';
+    if (!url) {
+      this.photoModalError = 'Ingresa una URL válida de imagen (https://...).';
+      this.render();
+      return;
+    }
+    if (!/^https?:\/\//i.test(url) && !/^data:image\//i.test(url)) {
+      this.photoModalError = 'La URL debe comenzar con https:// o http://.';
+      this.render();
+      return;
+    }
+    if (/[<>"'\s]/.test(url)) {
+      this.photoModalError = 'La URL contiene caracteres no válidos.';
+      this.render();
+      return;
+    }
+    if (url.length > 148000) {
+      this.photoModalError = 'La URL excede el tamaño máximo permitido.';
+      this.render();
+      return;
+    }
+    await this.applyMobileCustomAvatar(url);
+  },
+
+  async restoreDefaultMobilePhoto() {
+    await this.applyMobileCustomAvatar(null);
+  },
+
   restoreSession() {
     try {
-      const saved = localStorage.getItem('educonnect_session_user');
+      const saved = sessionStorage.getItem('educonnect_session_user') || localStorage.getItem('educonnect_session_user');
       if (saved) {
         const u = JSON.parse(saved);
         if (u && u.role) {
+          if (u.role === 'alumno' && (u.id === 14 || (u.name && u.name.includes('Naomi')))) {
+            u.name = 'Mateo González Tapia';
+          }
+          u.defaultAvatar = u.defaultAvatar || this.getDefaultAvatarUrl(u);
+          u.avatar = this.getUserAvatarUrl(u);
+          sessionStorage.setItem('educonnect_session_user', JSON.stringify(u));
           this.currentUser = u;
           this.currentRoleKey = u.role;
           if (u.role === 'alumno') {
             this.currentTab = 'actividades_alumno';
+          } else if (this.currentTab === 'asignar' && u.role !== 'profesora' && u.role !== 'admin') {
+            this.currentTab = 'mensajeria';
           }
         }
       }
@@ -580,62 +748,48 @@ const app = {
         target.status = b.status;
       }
     });
+
+    // Guardar copia maestra del catálogo completo de plantillas interactivas
+    this.studentActivitiesTemplates = JSON.parse(JSON.stringify(this.studentActivitiesList));
+    this.teacherCatalogStatus = [];
   },
 
   startPolling() {
     if (this._pollTimer) return;
     this._pollTimer = setInterval(async () => {
-      if (document.hidden || !this.currentUser || this.activeChildActivity) return;
-      if (window.mobileApi && mobileApi.isOnline) {
-        if (this.currentTab === 'mensajeria' && this.chatMode === 'individual') {
+      if (document.hidden || !this.currentUser || this.activeChildActivity || this.activeTeacherReview || this.showServerModal || this.isMobileAssignModalOpen) return;
+      const activeEl = document.activeElement;
+      if (activeEl && ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeEl.tagName)) return;
+
+      if (window.mobileApi) {
+        if (this.currentUser.role === 'alumno') {
+          const prevSnap = JSON.stringify(this.studentActivitiesList || []);
+          await this.sincronizarActividadesAlumno();
+          const nextSnap = JSON.stringify(this.studentActivitiesList || []);
+          if (prevSnap !== nextSnap) this.render();
+        } else if (this.currentTab === 'mensajeria' && this.chatMode === 'individual') {
           await this.cargarMensajesConversacion(this.activeConversacionId, true);
-        } else if (this.currentTab === 'alertas' && this.currentUser.role === 'apoderado') {
-          const alertasApi = await mobileApi.getAlertasUsuario(this.currentUser.id);
-          if (Array.isArray(alertasApi) && alertasApi.length > 0) {
-            this.alertasLocales = alertasApi.map(a => ({
-              ...a,
-              alumno: a.alumno || (this.selectedPupilIndex === 0 ? 'Mateo González (1° Básico B)' : 'Sofía González (2° Básico A)')
-            }));
-            this.render();
-          }
+        } else if (this.currentTab === 'mensajeria' && this.chatMode === 'grupal') {
+          await this.cargarAlertasMovil(true);
+        } else if (this.currentTab === 'asignar' && this.isMobileTeacherAuthorized()) {
+          const prevSnap = JSON.stringify(this.teacherCatalogStatus || []);
+          await this.cargarEstadoActividadesCursoMovil(true);
+          const nextSnap = JSON.stringify(this.teacherCatalogStatus || []);
+          if (prevSnap !== nextSnap) this.render();
+        } else if (this.currentTab === 'dashboard' && this.currentUser.role === 'apoderado') {
+          const prevSnap = JSON.stringify(this.reporteriaData || {});
+          await this.cargarReporteriaAlumno();
+          const nextSnap = JSON.stringify(this.reporteriaData || {});
+          if (prevSnap !== nextSnap) this.render();
+        } else if (this.currentTab === 'alertas' && (this.currentUser.role === 'apoderado' || this.isMobileTeacherAuthorized())) {
+          await this.cargarAlertasMovil(true);
         }
       }
     }, 3500);
   },
 
   initDefaultAlertas() {
-    this.alertasLocales = [
-      {
-        id: 4,
-        usuario_id: 13,
-        tipo: 'urgente',
-        titulo: 'Rezago detectado en Objetivo MA01 OA 09 (Adiciones hasta el 10)',
-        contenido: 'Mateo presenta dificultad en la descomposición aditiva pictórica. Se recomienda reforzar con la dinámica de adiciones y conteo concreto.',
-        fecha_creacion: 'Hoy 09:15',
-        estado: 'PENDIENTE',
-        alumno: 'Mateo González (1° Básico B)'
-      },
-      {
-        id: 2,
-        usuario_id: 13,
-        tipo: 'urgente',
-        titulo: 'Aviso de Tarea Próxima a Vencer: Conteo al Ritmo',
-        contenido: 'La actividad rítmica de matemática tiene plazo límite hoy hasta las 18:00 hrs. Faltan completar los niveles 3 y 4.',
-        fecha_creacion: 'Hoy 08:00',
-        estado: 'PENDIENTE',
-        alumno: 'Mateo González (1° Básico B)'
-      },
-      {
-        id: 3,
-        usuario_id: 13,
-        tipo: 'informativa',
-        titulo: 'Registro de Inasistencia Justificada',
-        contenido: 'Se ha registrado la justificación médica del día martes 20 de octubre en el libro digital de clases.',
-        fecha_creacion: 'Ayer 16:20',
-        estado: 'LEIDA',
-        alumno: 'Mateo González (1° Básico B)'
-      }
-    ];
+    this.alertasLocales = [];
   },
 
   // -------------------------------------------------------------
@@ -666,6 +820,18 @@ const app = {
       this.currentRoleKey = 'profesora';
       this.currentTab = 'mensajeria';
       this.activeConversacionId = 1;
+    } else if (roleKey === 'admin') {
+      this.currentUser = {
+        id: 11,
+        name: 'Rodrigo Valenzuela Lagos',
+        email: 'admin@sanandres.cl',
+        role: 'admin',
+        curso: 'Colegio San Andrés',
+        rolLabel: 'Director Académico'
+      };
+      this.currentRoleKey = 'admin';
+      this.currentTab = 'mensajeria';
+      this.activeConversacionId = 1;
     } else {
       this.currentUser = {
         id: 13,
@@ -680,9 +846,15 @@ const app = {
       this.activeConversacionId = 1;
     }
 
+    this.currentUser.defaultAvatar = this.getDefaultAvatarUrl(this.currentUser);
+    this.currentUser.avatar = this.getUserAvatarUrl(this.currentUser);
     this.activeChildActivity = null;
+    this.activeTeacherReview = null;
     this.errorMessage = '';
-    localStorage.setItem('educonnect_session_user', JSON.stringify(this.currentUser));
+    try {
+      sessionStorage.setItem('educonnect_session_user', JSON.stringify(this.currentUser));
+      localStorage.setItem('educonnect_session_user', JSON.stringify(this.currentUser));
+    } catch (e) {}
     this.cargarDatosUsuario();
     this.render();
   },
@@ -702,16 +874,21 @@ const app = {
       return;
     }
 
-    if (window.mobileApi && mobileApi.isOnline) {
+    if (window.mobileApi) {
       const authRes = await mobileApi.login(email, pass);
-      if (authRes.success) {
+      if (authRes.success && authRes.data) {
         const u = authRes.data;
         const rol = (u.rol_principal || '').toUpperCase();
-        if (rol.includes('ALUM') || email.includes('alumno')) {
+        if (rol.includes('ALUM') || email === 'alumno@sanandres.cl') {
           this.loginDemo('alumno');
           return;
         }
+        if (rol.includes('ADMIN') || email === 'admin@sanandres.cl') {
+          this.loginDemo('admin');
+          return;
+        }
         const mappedRole = rol.includes('PROF') ? 'profesora' : 'apoderado';
+        const defaultAvatar = u.defaultAvatar || this.getDefaultAvatarUrl({ id: u.id, role: mappedRole });
         this.currentUser = {
           id: u.id,
           name: u.nombre,
@@ -719,26 +896,42 @@ const app = {
           role: mappedRole,
           curso: mappedRole === 'profesora' ? '1° Básico B' : null,
           pupils: mappedRole === 'apoderado' ? ['Mateo González (1° Básico B)', 'Sofía González (2° Básico A)'] : null,
-          rolLabel: mappedRole === 'profesora' ? 'Profesora Jefe 1° Básico B' : 'Apoderada Titular'
+          rolLabel: mappedRole === 'profesora' ? 'Profesora Jefe 1° Básico B' : 'Apoderada Titular',
+          defaultAvatar,
+          avatar: u.avatar || this.getUserAvatarUrl({ id: u.id, role: mappedRole, defaultAvatar })
         };
         this.currentRoleKey = mappedRole;
         this.currentTab = 'mensajeria';
+        this.activeConversacionId = this.selectedPupilIndex === 1 ? 2 : 1;
+        this.activeTeacherReview = null;
         this.errorMessage = '';
-        localStorage.setItem('educonnect_session_user', JSON.stringify(this.currentUser));
+        this.mobileAlertSuccessMsg = '';
+        this.mobileComSuccessMsg = '';
+        try {
+          sessionStorage.setItem('educonnect_session_user', JSON.stringify(this.currentUser));
+          localStorage.setItem('educonnect_session_user', JSON.stringify(this.currentUser));
+        } catch (e) {}
         this.cargarDatosUsuario();
+        this.render();
+        return;
+      } else if (authRes.detail) {
+        this.errorMessage = authRes.detail;
         this.render();
         return;
       }
     }
 
-    if (email === 'alumno@sanandres.cl' && pass === 'alumno123') {
-      this.loginDemo('alumno');
-    } else if (email === 'profesora@sanandres.cl' && pass === 'profe123') {
-      this.loginDemo('profesora');
-    } else if (email === 'apoderado@sanandres.cl' && pass === 'apoderado123') {
-      this.loginDemo('apoderado');
+    // Respaldo criptográfico local (verificando únicamente hashes SHA-256)
+    const inputHash = (window.firebaseDb && firebaseDb.hashPassword) ? firebaseDb.hashPassword(pass) : '';
+    const usersMap = (window.mockData && mockData.demoUsers) ? mockData.demoUsers : {};
+    const matchedRole = Object.keys(usersMap).find(
+      rk => usersMap[rk].email.toLowerCase() === email && usersMap[rk].password_hash === inputHash
+    );
+
+    if (matchedRole) {
+      this.loginDemo(matchedRole);
     } else {
-      this.errorMessage = 'Credenciales incorrectas. Usa alumno@sanandres.cl, profesora@sanandres.cl o apoderado@sanandres.cl';
+      this.errorMessage = 'Credenciales incorrectas. Verifica tu correo y contraseña institucional.';
       this.render();
     }
   },
@@ -746,9 +939,16 @@ const app = {
   logout() {
     this.detenerActividadInfantil();
     this.currentUser = null;
+    this.activeTeacherReview = null;
+    this.isMobileAssignModalOpen = false;
     this.currentTab = 'mensajeria';
     this.errorMessage = '';
-    localStorage.removeItem('educonnect_session_user');
+    this.mobileAlertSuccessMsg = '';
+    this.mobileComSuccessMsg = '';
+    try {
+      sessionStorage.removeItem('educonnect_session_user');
+      localStorage.removeItem('educonnect_session_user');
+    } catch (e) {}
     this.render();
   },
 
@@ -761,16 +961,13 @@ const app = {
       return;
     }
 
-    if (window.mobileApi && mobileApi.isOnline) {
-      const alertasApi = await mobileApi.getAlertasUsuario(this.currentUser.id);
-      if (Array.isArray(alertasApi) && alertasApi.length > 0) {
-        this.alertasLocales = alertasApi.map(a => ({
-          ...a,
-          alumno: a.alumno || (this.selectedPupilIndex === 0 ? 'Mateo González (1° Básico B)' : 'Sofía González (2° Básico A)')
-        }));
-      }
+    if (window.mobileApi) {
+      await this.cargarAlertasMovil(true);
       await this.cargarMensajesConversacion(this.activeConversacionId);
       await this.cargarReporteriaAlumno();
+      if (this.isMobileTeacherAuthorized()) {
+        await this.cargarEstadoActividadesCursoMovil(true);
+      }
     }
     this.render();
   },
@@ -778,52 +975,420 @@ const app = {
   async sincronizarActividadesAlumno() {
     if (!window.mobileApi) return;
     const dbActs = await mobileApi.getActividadesAlumno(5);
-    if (Array.isArray(dbActs) && dbActs.length > 0) {
-      dbActs.forEach(dbItem => {
-        const dbTitle = (dbItem.titulo || '').toLowerCase();
-        let localMatch = this.studentActivitiesList.find(a =>
-          (dbItem.actividad_id && Number(a.actividad_id) === Number(dbItem.actividad_id)) ||
-          (dbItem.codigo_frontend && a.id === dbItem.codigo_frontend) ||
-          (dbTitle && a.title.toLowerCase() === dbTitle)
-        );
-        if (localMatch) {
-          localMatch.actividad_id = dbItem.actividad_id;
-          localMatch.status = dbItem.estado || 'Pendiente';
-          localMatch.title = dbItem.titulo || localMatch.title;
-          localMatch.subject = dbItem.asignatura || localMatch.subject;
-          if (dbItem.dificultad && dbItem.dificultad.includes('OA')) {
-            const parts = dbItem.dificultad.split('•');
-            localMatch.oaCode = (parts[1] || parts[0]).trim();
-          }
-        } else {
-          // Si la profesora asignó una nueva actividad en el portal docente, asignarle su plantilla funcional según el tipo
-          let template = this.studentActivitiesList[0];
-          if (dbTitle.includes('resta')) {
-            template = this.studentActivitiesList.find(x => x.activityType === 'subtraction') || template;
-          } else if (dbTitle.includes('suma') || dbTitle.includes('bosque')) {
-            template = this.studentActivitiesList.find(x => x.activityType === 'addition') || template;
-          } else if (dbTitle.includes('cuento') || dbTitle.includes('conejo') || dbTitle.includes('uvas')) {
-            template = this.studentActivitiesList.find(x => x.activityType === 'story_comprehension') || template;
-          } else if (dbTitle.includes('casa de las letras') || dbTitle.includes('letra m')) {
-            template = this.studentActivitiesList.find(x => x.id === 'act-db-5') || template;
-          } else if (dbTitle.includes('sonido') || dbTitle.includes('silaba') || dbTitle.includes('sílaba') || (dbItem.asignatura || '').toLowerCase().includes('lenguaje')) {
-            template = this.studentActivitiesList.find(x => x.id === 'act-len-1') || template;
-          }
+    if (!Array.isArray(dbActs)) return;
 
-          this.studentActivitiesList.push({
-            id: dbItem.codigo_frontend || `act-db-${dbItem.actividad_id}`,
-            actividad_id: dbItem.actividad_id,
-            subject: dbItem.asignatura || template.subject,
-            oaCode: (dbItem.dificultad && dbItem.dificultad.includes('OA')) ? dbItem.dificultad.split('•').pop().trim() : template.oaCode,
-            oaSummary: dbItem.descripcion || template.oaSummary,
-            activityType: template.activityType,
-            title: dbItem.titulo || template.title,
-            status: dbItem.estado || 'Pendiente',
-            exercises: JSON.parse(JSON.stringify(template.exercises))
-          });
+    const templates = (Array.isArray(this.studentActivitiesTemplates) && this.studentActivitiesTemplates.length > 0)
+      ? this.studentActivitiesTemplates
+      : this.studentActivitiesList;
+
+    const assignedActivities = [];
+    dbActs.forEach(dbItem => {
+      const dbTitle = (dbItem.titulo || '').toLowerCase();
+      let template = templates.find(a =>
+        (dbItem.actividad_id && Number(a.actividad_id) === Number(dbItem.actividad_id)) ||
+        (dbItem.codigo_frontend && a.id === dbItem.codigo_frontend) ||
+        (dbTitle && a.title.toLowerCase() === dbTitle)
+      );
+
+      if (!template) {
+        template = templates[0];
+        if (dbTitle.includes('resta')) {
+          template = templates.find(x => x.activityType === 'subtraction') || template;
+        } else if (dbTitle.includes('suma') || dbTitle.includes('bosque')) {
+          template = templates.find(x => x.activityType === 'addition') || template;
+        } else if (dbTitle.includes('cuento') || dbTitle.includes('conejo') || dbTitle.includes('uvas')) {
+          template = templates.find(x => x.activityType === 'story_comprehension') || template;
+        } else if (dbTitle.includes('casa de las letras') || dbTitle.includes('letra m')) {
+          template = templates.find(x => x.id === 'act-db-5') || template;
+        } else if (dbTitle.includes('sonido') || dbTitle.includes('silaba') || dbTitle.includes('sílaba') || (dbItem.asignatura || '').toLowerCase().includes('lenguaje')) {
+          template = templates.find(x => x.id === 'act-len-1') || template;
+        }
+      }
+
+      if (template) {
+        let oaCode = template.oaCode;
+        if (dbItem.dificultad && dbItem.dificultad.includes('OA')) {
+          const parts = dbItem.dificultad.split('•');
+          oaCode = (parts[1] || parts[0]).trim();
+        }
+        assignedActivities.push({
+          ...JSON.parse(JSON.stringify(template)),
+          id: dbItem.codigo_frontend || template.id || `act-db-${dbItem.actividad_id}`,
+          actividad_id: dbItem.actividad_id || template.actividad_id,
+          subject: dbItem.asignatura || template.subject,
+          oaCode: oaCode,
+          oaSummary: dbItem.descripcion || template.oaSummary,
+          title: dbItem.titulo || template.title,
+          status: dbItem.estado || 'Pendiente'
+        });
+      }
+    });
+
+    this.studentActivitiesList = assignedActivities;
+  },
+
+  async cargarEstadoActividadesCursoMovil(silent = false) {
+    if (!window.mobileApi) return;
+    const statusList = await mobileApi.getEstadoActividadesCurso(3);
+    if (Array.isArray(statusList)) {
+      this.teacherCatalogStatus = statusList;
+      if (!silent) this.render();
+    }
+  },
+
+  async asignarActividadMovil(code) {
+    if (!window.mobileApi) return;
+    const templates = this.studentActivitiesTemplates || [];
+    const tpl = templates.find(t => t.id === code);
+    const dbRow = (this.teacherCatalogStatus || []).find(r => r.codigo_frontend === code);
+
+    await mobileApi.asignarActividad({
+      curso_id: 3,
+      codigo_frontend: code,
+      titulo: (dbRow && dbRow.titulo) || (tpl && tpl.title) || code,
+      descripcion: (dbRow && dbRow.descripcion) || (tpl && tpl.oaSummary) || '',
+      asignatura: (dbRow && dbRow.asignatura) || (tpl && tpl.subject) || 'Matemáticas',
+      oa_code: (tpl && tpl.oaCode) || 'MA01 OA 01'
+    });
+    await this.cargarEstadoActividadesCursoMovil();
+    await this.sincronizarActividadesAlumno();
+    this.render();
+  },
+
+  async desasignarActividadMovil(code) {
+    if (!window.mobileApi) return;
+    const dbRow = (this.teacherCatalogStatus || []).find(r => r.codigo_frontend === code);
+    await mobileApi.desasignarActividad({
+      curso_id: 3,
+      codigo_frontend: code,
+      actividad_id: dbRow ? dbRow.actividad_id : null
+    });
+    await this.cargarEstadoActividadesCursoMovil();
+    await this.sincronizarActividadesAlumno();
+    this.render();
+  },
+
+  async vaciarActividadesMovil() {
+    if (!window.mobileApi) return;
+    await mobileApi.desasignarTodasActividades(3);
+    await this.cargarEstadoActividadesCursoMovil();
+    await this.sincronizarActividadesAlumno();
+    this.render();
+  },
+
+  async asignarTodasActividadesMovil() {
+    if (!window.mobileApi) return;
+    const codes = ['act-conteo', 'act-mat-2', 'act-db-9', 'act-len-1', 'act-db-5', 'act-len-2'];
+    for (const code of codes) {
+      await this.asignarActividadMovil(code);
+    }
+  },
+
+  abrirModalAsignarActividadMovil() {
+    if (!this.isMobileTeacherAuthorized() || this.isMobileAssigning) return;
+    const templates = Array.isArray(this.studentActivitiesTemplates) ? this.studentActivitiesTemplates : [];
+    const statusMap = {};
+    (this.teacherCatalogStatus || []).forEach(r => {
+      if (r.codigo_frontend) statusMap[r.codigo_frontend] = r;
+    });
+    const unassigned = templates.filter(t => !(statusMap[t.id] && statusMap[t.id].asignada));
+    if (this.mobileModalSelectedCodes.length === 0) {
+      if (unassigned.length > 0) {
+        this.mobileModalSelectedCodes = [unassigned[0].id];
+      } else if (templates.length > 0) {
+        this.mobileModalSelectedCodes = [templates[0].id];
+      }
+    }
+    this.mobileAssignModalError = '';
+    this.isMobileAssignModalOpen = true;
+    this.render();
+    setTimeout(() => this.ensureMobileAssignDialogShown(), 0);
+  },
+
+  cerrarModalAsignarActividadMovil() {
+    if (this.isMobileAssigning) return;
+    this.isMobileAssignModalOpen = false;
+    this.mobileAssignModalError = '';
+    const dlg = document.getElementById('mobile-assign-activities-dialog');
+    if (dlg && dlg.open && typeof dlg.close === 'function') {
+      dlg.close();
+    } else {
+      this.render();
+    }
+  },
+
+  ensureMobileAssignDialogShown() {
+    const dlg = document.getElementById('mobile-assign-activities-dialog');
+    if (!dlg || !this.isMobileAssignModalOpen) return;
+
+    if (!dlg.dataset.boundClose) {
+      dlg.dataset.boundClose = '1';
+      dlg.addEventListener('close', () => {
+        dlg.returnValue = '';
+        if (this.isMobileAssignModalOpen) {
+          this.isMobileAssignModalOpen = false;
+          this.mobileAssignModalError = '';
+          this.render();
         }
       });
+      if (!('closedBy' in HTMLDialogElement.prototype)) {
+        const isOutside = (e, dialogEl) => {
+          const r = dialogEl.getBoundingClientRect();
+          return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+        };
+        let pressedOutside = false;
+        dlg.addEventListener('pointerdown', (e) => {
+          pressedOutside = isOutside(e, dlg);
+        });
+        dlg.addEventListener('pointerup', (e) => {
+          if (pressedOutside && isOutside(e, dlg) && !this.isMobileAssigning) {
+            dlg.close();
+          }
+        });
+      }
     }
+
+    if (typeof dlg.showModal === 'function' && !dlg.open) {
+      dlg.showModal();
+    }
+  },
+
+  refreshMobileAssignModalBody(focusId = null) {
+    const body = document.getElementById('mobile-assign-modal-body');
+    if (!body) return;
+    const activeId = focusId || (document.activeElement && document.activeElement.id ? document.activeElement.id : null);
+    body.innerHTML = this.renderMobileAssignModalInner();
+    if (window.lucide) {
+      lucide.createIcons();
+    }
+    if (activeId) {
+      const el = document.getElementById(activeId);
+      if (el && typeof el.focus === 'function') {
+        el.focus({ preventScroll: true });
+      }
+    }
+  },
+
+  toggleActividadModalMovil(code, checked) {
+    const set = new Set(Array.isArray(this.mobileModalSelectedCodes) ? this.mobileModalSelectedCodes : []);
+    if (checked) {
+      set.add(code);
+    } else {
+      set.delete(code);
+    }
+    this.mobileModalSelectedCodes = Array.from(set);
+    this.mobileAssignModalError = '';
+    this.refreshMobileAssignModalBody(`mobile-modal-act-${code}`);
+  },
+
+  seleccionarTodasModalMovil() {
+    const templates = Array.isArray(this.studentActivitiesTemplates) ? this.studentActivitiesTemplates : [];
+    this.mobileModalSelectedCodes = templates.map(t => t.id);
+    this.mobileAssignModalError = '';
+    this.refreshMobileAssignModalBody();
+  },
+
+  limpiarSeleccionModalMovil() {
+    this.mobileModalSelectedCodes = [];
+    this.mobileAssignModalError = '';
+    this.refreshMobileAssignModalBody();
+  },
+
+  async confirmarAsignarSeleccionMovil(event) {
+    if (event && event.preventDefault) event.preventDefault();
+    if (!this.isMobileTeacherAuthorized() || this.isMobileAssigning || !window.mobileApi) return;
+
+    const templates = Array.isArray(this.studentActivitiesTemplates) ? this.studentActivitiesTemplates : [];
+    const selectedTemplates = templates.filter(t => this.mobileModalSelectedCodes.includes(t.id));
+    if (selectedTemplates.length === 0) {
+      this.mobileAssignModalError = 'Selecciona al menos una actividad para asignar.';
+      const firstId = templates.length > 0 ? `mobile-modal-act-${templates[0].id}` : null;
+      this.refreshMobileAssignModalBody(firstId);
+      return;
+    }
+
+    this.isMobileAssigning = true;
+    this.mobileAssignModalError = '';
+    this.refreshMobileAssignModalBody();
+
+    for (const tpl of selectedTemplates) {
+      const dbRow = (this.teacherCatalogStatus || []).find(r => r.codigo_frontend === tpl.id);
+      await mobileApi.asignarActividad({
+        curso_id: 3,
+        codigo_frontend: tpl.id,
+        titulo: (dbRow && dbRow.titulo) || tpl.title || tpl.id,
+        descripcion: (dbRow && dbRow.descripcion) || tpl.oaSummary || '',
+        asignatura: (dbRow && dbRow.asignatura) || tpl.subject || 'Matemáticas',
+        oa_code: tpl.oaCode || 'MA01 OA 01'
+      });
+    }
+
+    await this.cargarEstadoActividadesCursoMovil(true);
+    await this.sincronizarActividadesAlumno();
+
+    this.isMobileAssigning = false;
+    this.isMobileAssignModalOpen = false;
+
+    const dlg = document.getElementById('mobile-assign-activities-dialog');
+    if (dlg && dlg.open && typeof dlg.close === 'function') {
+      dlg.close();
+    }
+    this.render();
+  },
+
+  isMobileTeacherAuthorized() {
+    return Boolean(this.currentUser && (this.currentUser.role === 'profesora' || this.currentUser.role === 'admin'));
+  },
+
+  async abrirRevisionActividadMovil(code, alumnoId = 5) {
+    if (!this.isMobileTeacherAuthorized()) return;
+    this.teacherReviewSentSuccess = false;
+    this.teacherReviewMessageDraft = undefined;
+    if (window.mobileApi) {
+      const rev = await mobileApi.getRevisionActividad(3, code, alumnoId);
+      if (rev && rev.success) {
+        this.activeTeacherReview = rev;
+        if (rev.resumen_ia && rev.resumen_ia.mensaje_apoderado) {
+          this.teacherReviewMessageDraft = rev.resumen_ia.mensaje_apoderado;
+        }
+        this.render();
+        return;
+      }
+    }
+    const dbRow = (this.teacherCatalogStatus || []).find(r => r.codigo_frontend === code) || {};
+    const completados = (dbRow.estado_alumno === 'Entregada' || (Array.isArray(dbRow.detalle_respuestas_alumno) && dbRow.detalle_respuestas_alumno.length > 0))
+      ? [{
+          alumno_id: 5,
+          alumno_nombre: 'Mateo González',
+          apoderado_nombre: 'Carolina Tapia Morales',
+          estado: dbRow.estado_alumno || 'Entregada',
+          calificacion: dbRow.calificacion_alumno != null ? dbRow.calificacion_alumno : 10,
+          progreso: 100
+        }]
+      : [];
+    this.activeTeacherReview = {
+      codigo_frontend: code,
+      titulo: dbRow.titulo || 'Actividad Escolar',
+      asignatura: dbRow.asignatura || 'Matemáticas',
+      alumno_id: alumnoId || 5,
+      alumno_nombre: 'Mateo González',
+      apoderado_nombre: 'Carolina Tapia Morales',
+      estado: dbRow.estado_alumno || 'Pendiente',
+      calificacion: dbRow.calificacion_alumno != null ? dbRow.calificacion_alumno : null,
+      detalle_respuestas: Array.isArray(dbRow.detalle_respuestas_alumno) ? dbRow.detalle_respuestas_alumno : [],
+      resumen_ia: dbRow.resumen_ia_alumno || null,
+      alumnos_completados: completados,
+      alumnos_asignados: [{
+        alumno_id: 5,
+        alumno_nombre: 'Mateo González',
+        apoderado_nombre: 'Carolina Tapia Morales',
+        estado: dbRow.estado_alumno || 'Pendiente',
+        calificacion: dbRow.calificacion_alumno != null ? dbRow.calificacion_alumno : null,
+        progreso: dbRow.progreso_alumno || 0
+      }]
+    };
+    this.render();
+  },
+
+  async seleccionarAlumnoRevisionMovil(code, alumnoId) {
+    if (!this.isMobileTeacherAuthorized()) return;
+    await this.abrirRevisionActividadMovil(code, Number(alumnoId) || 5);
+  },
+
+  cerrarRevisionActividadMovil() {
+    this.activeTeacherReview = null;
+    this.teacherReviewMessageDraft = undefined;
+    this.teacherReviewSentSuccess = false;
+    this.render();
+  },
+
+  async reiniciarPuntajeActividadMovil(code) {
+    if (!this.isMobileTeacherAuthorized()) return;
+    if (window.mobileApi && mobileApi.reiniciarPuntajeActividad) {
+      await mobileApi.reiniciarPuntajeActividad({
+        curso_id: 3,
+        codigo_frontend: code,
+        alumno_id: 5
+      });
+    }
+
+    if (this.activeTeacherReview && this.activeTeacherReview.codigo_frontend === code) {
+      this.activeTeacherReview.estado = 'Pendiente';
+      this.activeTeacherReview.progreso = 0;
+      this.activeTeacherReview.calificacion = null;
+      this.activeTeacherReview.detalle_respuestas = [];
+      this.activeTeacherReview.errores_conteo = [];
+      this.activeTeacherReview.tiempo_promedio_segundos = 0;
+      this.activeTeacherReview.tiempo_total_segundos = 0;
+    }
+
+    await this.cargarEstadoActividadesCursoMovil(true);
+    await this.sincronizarActividadesAlumno();
+    await this.cargarReporteriaAlumno();
+    this.render();
+  },
+
+  async regenerarResumenIaMovil() {
+    if (!this.isMobileTeacherAuthorized() || !this.activeTeacherReview || !window.mobileApi) return;
+    const rev = this.activeTeacherReview;
+    const iaRes = await mobileApi.generarResumenDocenteIa({
+      alumno_nombre: rev.alumno_nombre || 'Mateo González',
+      actividad_codigo: rev.codigo_frontend || 'act-conteo',
+      actividad_titulo: rev.titulo || 'Actividad Escolar',
+      asignatura: rev.asignatura || 'Matemáticas',
+      calificacion: rev.calificacion != null ? rev.calificacion : 10,
+      errores_conteo: rev.errores_conteo || [],
+      detalle_respuestas: rev.detalle_respuestas || []
+    });
+    if (iaRes && iaRes.success) {
+      this.activeTeacherReview.resumen_ia = iaRes;
+      this.teacherReviewMessageDraft = iaRes.mensaje_apoderado;
+      this.render();
+    }
+  },
+
+  async enviarResumenApoderadoMovil() {
+    if (!this.isMobileTeacherAuthorized() || !this.activeTeacherReview) {
+      alert('Solo el docente a cargo puede enviar reportes pedagógicos al apoderado.');
+      return;
+    }
+    const textarea = document.getElementById('mobile-teacher-ia-msg');
+    const msgText = (textarea ? textarea.value : (this.teacherReviewMessageDraft || '')).trim();
+    if (!msgText) {
+      alert('El mensaje para el apoderado no puede estar vacío.');
+      return;
+    }
+
+    const rev = this.activeTeacherReview;
+    const validTeacherId = (this.currentUser && (this.currentUser.id === 12 || this.currentUser.id === 11)) ? this.currentUser.id : 12;
+    if (window.mobileApi) {
+      await mobileApi.enviarResumenApoderado({
+        alumno_id: rev.alumno_id || 5,
+        student_code: 'alu-102',
+        profesor_usuario_id: validTeacherId,
+        actividad_titulo: rev.titulo || 'Actividad Escolar',
+        contenido: msgText
+      });
+    }
+
+    // Actualizar también la lista local de mensajes de la conversación 1 (Mateo)
+    const convId = 1;
+    if (!this.mensajesPorConversacion[convId]) {
+      this.mensajesPorConversacion[convId] = [];
+    }
+    this.mensajesPorConversacion[convId].push({
+      id: Date.now(),
+      remitenteId: validTeacherId,
+      remitenteNombre: 'Marcela Soto Valenzuela',
+      texto: msgText,
+      hora: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      leido: false,
+      esMio: true
+    });
+
+    await this.cargarMensajesConversacion(convId);
+    this.teacherReviewSentSuccess = true;
+    this.render();
   },
 
   // -------------------------------------------------------------
@@ -847,6 +1412,11 @@ const app = {
     this.activeChildActivity = act;
     this.currentExerciseIndex = 0;
     this.completedExercises = [];
+    this.countingMistakes = [];
+    this.stepResponseDetails = [];
+    this._currentStepMistakes = [];
+    this._stepStartTimeMs = Date.now();
+    this.activityMistakeCount = 0;
     this.isActivityCompletedCelebration = false;
     this.isRecordingVoice = false;
     this.lastSpokenTranscript = '';
@@ -1008,6 +1578,136 @@ const app = {
       await this.procesarRespuestaNino(transcriptText);
     };
 
+    const isCloudOrNativeMode = !window.mobileApi || !mobileApi._localServerActive;
+    const hasNativeAndroidStt = typeof window !== 'undefined' &&
+      window.AndroidVoiceBridge &&
+      typeof window.AndroidVoiceBridge.hasNativeStt === 'function' &&
+      window.AndroidVoiceBridge.hasNativeStt();
+
+    const startBrowserSpeechFallback = () => {
+      const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRec) {
+        this._recordingFallbackTimer = setTimeout(() => {
+          finishWithTranscript('');
+        }, 500);
+        return;
+      }
+      try {
+        const recognition = new SpeechRec();
+        this._recognition = recognition;
+        recognition.lang = 'es-CL';
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        let latestTranscript = '';
+
+        this._onManualVoiceStop = () => finishWithTranscript(latestTranscript);
+
+        recognition.onresult = (ev) => {
+          if (handled || !this.isRecordingVoice) return;
+          const parts = [];
+          for (let i = 0; i < ev.results.length; i++) {
+            const t = ev.results[i] && ev.results[i][0] && ev.results[i][0].transcript;
+            if (t) parts.push(t);
+          }
+          const combined = parts.join(' ').trim();
+          if (combined) latestTranscript = combined;
+
+          if (latestTranscript && this.esTranscripcionValidaParaEjercicio(latestTranscript)) {
+            finishWithTranscript(latestTranscript);
+            return;
+          }
+
+          if (this._androidSttSilenceTimer) clearTimeout(this._androidSttSilenceTimer);
+          const lastRes = ev.results && ev.results[ev.results.length - 1];
+          const delayMs = (lastRes && lastRes.isFinal && latestTranscript) ? 250 : 1200;
+          this._androidSttSilenceTimer = setTimeout(() => {
+            if (!handled && this.isRecordingVoice && latestTranscript) {
+              finishWithTranscript(latestTranscript);
+            }
+          }, delayMs);
+        };
+
+        recognition.onerror = () => {
+          if (!handled) finishWithTranscript(latestTranscript);
+        };
+        recognition.onend = () => {
+          if (!handled && this.isRecordingVoice) {
+            finishWithTranscript(latestTranscript);
+          }
+        };
+
+        recognition.start();
+        this._recordingFallbackTimer = setTimeout(() => {
+          if (this.isRecordingVoice && !handled) {
+            finishWithTranscript(latestTranscript);
+          }
+        }, 4800);
+      } catch (e) {
+        finishWithTranscript('');
+      }
+    };
+
+    if (isCloudOrNativeMode) {
+      if (hasNativeAndroidStt) {
+        let latestTranscript = '';
+        this._onManualVoiceStop = () => finishWithTranscript(latestTranscript);
+
+        window._onAndroidSttResult = (text, isFinal) => {
+          if (handled || !this.isRecordingVoice) return;
+          const clean = String(text || '').trim();
+          if (clean) latestTranscript = clean;
+
+          if (latestTranscript && this.esTranscripcionValidaParaEjercicio(latestTranscript)) {
+            finishWithTranscript(latestTranscript);
+            return;
+          }
+          if (isFinal && latestTranscript) {
+            if (this._androidSttSilenceTimer) clearTimeout(this._androidSttSilenceTimer);
+            this._androidSttSilenceTimer = setTimeout(() => {
+              if (!handled && this.isRecordingVoice) {
+                finishWithTranscript(latestTranscript);
+              }
+            }, 150);
+          }
+        };
+
+        window._onAndroidSttEnd = () => {
+          if (!handled && this.isRecordingVoice) {
+            finishWithTranscript(latestTranscript);
+          }
+        };
+
+        window._onAndroidSttError = (errCode) => {
+          if (handled || !this.isRecordingVoice) return;
+          if (errCode === 'speech_unavailable') {
+            window._onAndroidSttResult = null;
+            window._onAndroidSttEnd = null;
+            window._onAndroidSttError = null;
+            startBrowserSpeechFallback();
+            return;
+          }
+          finishWithTranscript(latestTranscript);
+        };
+
+        try {
+          window.AndroidVoiceBridge.startListening(false);
+        } catch (e) {
+          startBrowserSpeechFallback();
+          return;
+        }
+
+        this._recordingFallbackTimer = setTimeout(() => {
+          if (this.isRecordingVoice && !handled) {
+            finishWithTranscript(latestTranscript);
+          }
+        }, 5000);
+        return;
+      }
+
+      startBrowserSpeechFallback();
+      return;
+    }
+
     // 1. Usar MediaRecorder para capturar audio hacia /api/stt/transcribir (Deepgram Nova-2)
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       try {
@@ -1102,10 +1802,45 @@ const app = {
     this.isRecordingVoice = true;
     this.robotState = 'listening';
     this._countingManualStopRequested = false;
+    this._stepStartTimeMs = Date.now();
+    this._currentStepMistakes = [];
     this.render();
 
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      // Respaldo nativo solo si getUserMedia no está disponible
+    const isCloudOrNativeMode = !window.mobileApi || !mobileApi._localServerActive;
+    const hasNativeAndroidStt = typeof window !== 'undefined' &&
+      window.AndroidVoiceBridge &&
+      typeof window.AndroidVoiceBridge.hasNativeStt === 'function' &&
+      window.AndroidVoiceBridge.hasNativeStt();
+
+    if (isCloudOrNativeMode && hasNativeAndroidStt) {
+      window._onAndroidSttResult = async (text, isFinal) => {
+        if (!this.isRecordingVoice || !this.activeChildActivity || this.activeChildActivity.activityType !== 'counting' || this.isActivityCompletedCelebration) {
+          return;
+        }
+        if (text && String(text).trim()) {
+          await this.procesarNumerosContadosEnPantalla(String(text).trim(), {
+            start: 'android_live',
+            is_final: !!isFinal
+          });
+        }
+      };
+      window._onAndroidSttEnd = () => {};
+      window._onAndroidSttError = (errCode) => {
+        if (errCode === 'permission_denied' || errCode === 'speech_unavailable') {
+          this.detenerGrabacionVoz();
+          if (this.activeChildActivity && !this.isActivityCompletedCelebration) {
+            this.robotState = 'guiding';
+            this.render();
+          }
+        }
+      };
+      try {
+        window.AndroidVoiceBridge.startListening(true);
+        return;
+      } catch (e) {}
+    }
+
+    if (isCloudOrNativeMode || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (SpeechRec) {
         try {
@@ -1115,15 +1850,35 @@ const app = {
           recognition.continuous = true;
           recognition.interimResults = true;
           recognition.onresult = (ev) => {
-            if (!this.activeChildActivity || this.activeChildActivity.activityType !== 'counting') return;
+            if (!this.isRecordingVoice || !this.activeChildActivity || this.activeChildActivity.activityType !== 'counting' || this.isActivityCompletedCelebration) return;
             for (let i = ev.resultIndex; i < ev.results.length; i++) {
               const transcript = ev.results[i][0] && ev.results[i][0].transcript;
               if (transcript) {
-                this.procesarNumerosContadosEnPantalla(transcript, { start: i });
+                this.procesarNumerosContadosEnPantalla(transcript, { start: i, is_final: !!ev.results[i].isFinal });
               }
             }
           };
-          recognition.onerror = () => {};
+          recognition.onerror = (err) => {
+            if (err && (err.error === 'not-allowed' || err.error === 'service-not-allowed')) {
+              this.detenerGrabacionVoz();
+              if (this.activeChildActivity && !this.isActivityCompletedCelebration) {
+                this.robotState = 'guiding';
+                this.render();
+              }
+            }
+          };
+          recognition.onend = () => {
+            if (
+              this._recognition === recognition &&
+              this.isRecordingVoice &&
+              !this._countingManualStopRequested &&
+              !this.isActivityCompletedCelebration &&
+              this.activeChildActivity &&
+              this.activeChildActivity.activityType === 'counting'
+            ) {
+              try { recognition.start(); } catch (e) {}
+            }
+          };
           recognition.start();
         } catch (e) {}
       }
@@ -1147,8 +1902,8 @@ const app = {
 
       // Canal primario: Streaming WebSocket en vivo (/api/stt/live -> Deepgram Live interim_results=true, latencia ~200ms)
       let wsConnected = false;
-      const hostUrl = window.mobileApi ? mobileApi.getServerHostUrl() : 'http://192.168.1.113:8000';
-      const wsUrl = hostUrl.replace(/^http/i, 'ws') + '/api/stt/live';
+      const hostUrl = window.mobileApi ? mobileApi.getServerHostUrl() : '';
+      const wsUrl = hostUrl ? (hostUrl.replace(/^http/i, 'ws') + '/api/stt/live') : '';
 
       const startSliceFallback = () => {
         if (wsConnected || !this.isRecordingVoice || !this.activeChildActivity || this.activeChildActivity.activityType !== 'counting' || this.isActivityCompletedCelebration) {
@@ -1315,10 +2070,76 @@ const app = {
     // 4. Evaluar únicamente el último número pronunciado y avanzar ESTRICTAMENTE DE A UN NÚMERO A LA VEZ
     const lastSpokenNum = candidateNums[candidateNums.length - 1];
     if (lastSpokenNum !== expectedNum) {
+      // Ignorar si es simplemente eco residual del número anterior recién completado
+      if (this.lastCompletedCountingNumber !== null && lastSpokenNum === this.lastCompletedCountingNumber) {
+        return;
+      }
+
+      // Se detectó que el alumno dijo un número equivocado: restar 1 punto del máximo (10) y registrar qué número falló
+      this._countingCooldownUntil = now + 800;
+      if (utteranceStart !== null) {
+        this._countingConsumedUtterance = utteranceStart;
+      }
+      this._countingConsumedCount = spokenNums.length;
+      this._countingCooldownTranscript = cleanSpoken;
+
+      if (!Array.isArray(this.countingMistakes)) {
+        this.countingMistakes = [];
+      }
+      const mistakeEntry = `Número ${expectedNum} (dijo ${lastSpokenNum})`;
+      this.countingMistakes.push(mistakeEntry);
+      if (!Array.isArray(this._currentStepMistakes)) {
+        this._currentStepMistakes = [];
+      }
+      this._currentStepMistakes.push(`Dijo ${lastSpokenNum}`);
+
+      // Al alumno NO se le muestra ni menciona el descuento de puntaje; Robot Leo solo guía amablemente
+      this.robotState = 'guiding';
+      this.render();
+
+      if (window.mobileApi) {
+        const currentScore = Math.max(1, 10 - this.countingMistakes.length);
+        const pctNow = Math.round((this.completedExercises.length / totalEx) * 100);
+        mobileApi.actualizarEstadoActividad({
+          alumno_id: 5,
+          student_code: 'alu-102',
+          actividad_id: this.activeChildActivity.actividad_id,
+          codigo_frontend: this.activeChildActivity.id,
+          titulo: this.activeChildActivity.title,
+          asignatura: this.activeChildActivity.subject,
+          estado: 'En progreso',
+          progreso: pctNow,
+          calificacion: currentScore,
+          errores_conteo: this.countingMistakes,
+          detalle_respuestas: this.stepResponseDetails,
+          comentarios: `En progreso (${pctNow}%). Se equivocó en: ${this.countingMistakes.join(', ')}`,
+          tiempo_minutos: 3
+        });
+      }
       return;
     }
 
     // Bloquear inmediatamente por 900ms mientras ocurre la animación de transición al siguiente número
+    const elapsedSec = Math.max(0.5, Number(((now - (this._stepStartTimeMs || now)) / 1000).toFixed(1)));
+    const prevMistakesForNum = Array.isArray(this._currentStepMistakes) ? [...this._currentStepMistakes] : [];
+    if (!Array.isArray(this.stepResponseDetails)) {
+      this.stepResponseDetails = [];
+    }
+    this.stepResponseDetails.push({
+      paso: expectedNum,
+      etiqueta: `Número ${expectedNum}`,
+      esperado: String(expectedNum),
+      respondido: prevMistakesForNum.length > 0
+        ? `${prevMistakesForNum.join(', ')} → luego dijo ${lastSpokenNum}`
+        : `Dijo ${lastSpokenNum} ("${cleanSpoken || expectedNum}")`,
+      intentos: 1 + prevMistakesForNum.length,
+      errores_previos: prevMistakesForNum,
+      tiempo_segundos: elapsedSec,
+      correcto: prevMistakesForNum.length === 0
+    });
+    this._currentStepMistakes = [];
+    this._stepStartTimeMs = now;
+
     this._countingCooldownUntil = now + 900;
     if (utteranceStart !== null) {
       this._countingConsumedUtterance = utteranceStart;
@@ -1331,7 +2152,7 @@ const app = {
     }
 
     if (this.currentExerciseIndex >= totalEx - 1) {
-      // ¡Dijo el último número (10)! Completar actividad y felicitar por voz
+      // ¡Dijo el último número (10)! Completar actividad y felicitar por voz (sin mencionar jamás el puntaje al alumno)
       if (this._countingAnimTimer) {
         clearTimeout(this._countingAnimTimer);
         this._countingAnimTimer = null;
@@ -1342,6 +2163,12 @@ const app = {
       this.activeChildActivity.status = 'Entregada';
       this.robotState = 'celebrating';
       this.render();
+
+      const mistakesList = Array.isArray(this.countingMistakes) ? this.countingMistakes : [];
+      const finalScore = Math.max(1, 10 - mistakesList.length);
+      const teacherDiagnosticComment = mistakesList.length > 0
+        ? `Conteo del 1 al 10 completado. Se equivocó en: ${mistakesList.join(', ')}`
+        : 'Conteo del 1 al 10 completado sin errores en el primer intento (10/10 pts).';
 
       if (window.mobileApi) {
         await mobileApi.speakText(
@@ -1361,8 +2188,10 @@ const app = {
           asignatura: this.activeChildActivity.subject,
           estado: 'Entregada',
           progreso: 100,
-          calificacion: 7.0,
-          comentarios: 'Conteo del 1 al 10 completado en orden por voz en la App Móvil.',
+          calificacion: finalScore,
+          errores_conteo: mistakesList,
+          detalle_respuestas: this.stepResponseDetails,
+          comentarios: teacherDiagnosticComment,
           tiempo_minutos: 5
         });
       }
@@ -1391,6 +2220,8 @@ const app = {
     }, 620);
 
     if (window.mobileApi) {
+      const mistakesList = Array.isArray(this.countingMistakes) ? this.countingMistakes : [];
+      const currentScore = Math.max(1, 10 - mistakesList.length);
       mobileApi.actualizarEstadoActividad({
         alumno_id: 5,
         student_code: 'alu-102',
@@ -1400,6 +2231,12 @@ const app = {
         asignatura: this.activeChildActivity.subject,
         estado: 'En progreso',
         progreso: pct,
+        calificacion: currentScore,
+        errores_conteo: mistakesList,
+        detalle_respuestas: this.stepResponseDetails,
+        comentarios: mistakesList.length > 0
+          ? `En progreso (${pct}%). Se equivocó en: ${mistakesList.join(', ')}`
+          : `Actividad en progreso (${pct}% completado).`,
         tiempo_minutos: 3
       });
     }
@@ -1429,6 +2266,12 @@ const app = {
         return;
       } catch (e) {}
     }
+    if (this._onManualVoiceStop) {
+      const stopCb = this._onManualVoiceStop;
+      this._onManualVoiceStop = null;
+      stopCb();
+      return;
+    }
     if (this._recognition) {
       try {
         this._recognition.stop();
@@ -1442,9 +2285,22 @@ const app = {
   detenerGrabacionVoz() {
     this.isRecordingVoice = false;
     this._countingManualStopRequested = false;
+    this._onManualVoiceStop = null;
+    if (this._androidSttSilenceTimer) {
+      clearTimeout(this._androidSttSilenceTimer);
+      this._androidSttSilenceTimer = null;
+    }
     if (this._recordingFallbackTimer) {
       clearTimeout(this._recordingFallbackTimer);
       this._recordingFallbackTimer = null;
+    }
+    if (typeof window !== 'undefined') {
+      window._onAndroidSttResult = null;
+      window._onAndroidSttEnd = null;
+      window._onAndroidSttError = null;
+      if (window.AndroidVoiceBridge && typeof window.AndroidVoiceBridge.stopListening === 'function') {
+        try { window.AndroidVoiceBridge.stopListening(); } catch (e) {}
+      }
     }
     if (this._liveSttSocket) {
       try {
@@ -1507,6 +2363,29 @@ const app = {
       }
     }
     return nums;
+  },
+
+  esTranscripcionValidaParaEjercicio(rawSpoken) {
+    const ex = this.getCurrentExercise();
+    if (!ex || !this.activeChildActivity) return false;
+    const cleanSpoken = this.normalizeSpoken(rawSpoken);
+    if (!cleanSpoken) return false;
+
+    const actType = this.activeChildActivity.activityType || 'addition';
+    if (actType === 'addition' || actType === 'subtraction') {
+      const targetNum = Number(ex.targetNumber);
+      const spokenNums = this.extractSpokenNumbers(cleanSpoken);
+      return spokenNums.includes(targetNum);
+    }
+
+    const rawKeywords = (ex.keywords || []).map(k => this.normalizeSpoken(k)).filter(Boolean);
+    const words = cleanSpoken.split(/\s+/).filter(Boolean);
+    if (actType === 'phonological') {
+      const targetSyllable = rawKeywords[0] || '';
+      return words.some(w => rawKeywords.includes(w) || (targetSyllable.length >= 2 && w.startsWith(targetSyllable)));
+    }
+
+    return rawKeywords.some(kw => words.includes(kw) || (kw.length >= 4 && cleanSpoken.includes(kw)));
   },
 
   async procesarRespuestaNino(rawSpoken) {
@@ -1589,6 +2468,29 @@ const app = {
 
     if (esCorrecto) {
       // [REQ-03.3] Estado Celebrando: Sonrisa amplia, brazos arriba y estrellas
+      const nowMs = Date.now();
+      const elapsedSec = Math.max(0.6, Number(((nowMs - (this._stepStartTimeMs || nowMs)) / 1000).toFixed(1)));
+      const prevMistakesStep = Array.isArray(this._currentStepMistakes) ? [...this._currentStepMistakes] : [];
+      if (!Array.isArray(this.stepResponseDetails)) {
+        this.stepResponseDetails = [];
+      }
+      const stepNum = this.currentExerciseIndex + 1;
+      const stepLabelName = (ex && ex.targetNumber !== undefined)
+        ? `Ejercicio ${stepNum} (Resultado: ${ex.targetNumber})`
+        : ((ex && ex.word) ? `Palabra ${stepNum} (${ex.word})` : `Pregunta ${stepNum}`);
+      this.stepResponseDetails.push({
+        paso: stepNum,
+        etiqueta: stepLabelName,
+        esperado: ex && ex.targetNumber !== undefined ? String(ex.targetNumber) : (ex && ex.targetLetter ? ex.targetLetter : 'Respuesta correcta'),
+        respondido: String(rawSpoken || '').trim() || 'Respuesta correcta',
+        intentos: 1 + prevMistakesStep.length,
+        errores_previos: prevMistakesStep,
+        tiempo_segundos: elapsedSec,
+        correcto: prevMistakesStep.length === 0
+      });
+      this._currentStepMistakes = [];
+      this._stepStartTimeMs = Date.now();
+
       if (!this.completedExercises.includes(this.currentExerciseIndex)) {
         this.completedExercises.push(this.currentExerciseIndex);
       }
@@ -1612,6 +2514,11 @@ const app = {
             () => {}
           );
           if (this.activeChildActivity) {
+            const finalScore = Math.max(1, 10 - (this.activityMistakeCount || 0));
+            const mistakesList = Array.isArray(this.countingMistakes) ? this.countingMistakes : [];
+            const commentText = mistakesList.length > 0
+              ? `Actividad completada por voz. Se equivocó en: ${mistakesList.join(', ')}`
+              : `Actividad completada 100% por voz sin errores ("${rawSpoken}").`;
             await mobileApi.actualizarEstadoActividad({
               alumno_id: 5,
               student_code: 'alu-102',
@@ -1621,8 +2528,10 @@ const app = {
               asignatura: this.activeChildActivity.subject,
               estado: 'Entregada',
               progreso: 100,
-              calificacion: 7.0,
-              comentarios: `Actividad completada 100% por voz con Robot Leo ("${rawSpoken}").`,
+              calificacion: finalScore,
+              errores_conteo: mistakesList,
+              detalle_respuestas: this.stepResponseDetails,
+              comentarios: commentText,
               tiempo_minutos: 6
             });
           }
@@ -1630,6 +2539,7 @@ const app = {
       } else {
         // [REQ-05.6] Avanzar automáticamente al siguiente ejercicio al acertar con UN SOLO audio continuo (sin sobreposición)
         this.currentExerciseIndex += 1;
+        this._stepStartTimeMs = Date.now();
         const pct = Math.round((this.completedExercises.length / totalEx) * 100);
         this.activeChildActivity.status = 'En progreso';
         this.robotState = 'celebrating';
@@ -1645,6 +2555,7 @@ const app = {
             asignatura: this.activeChildActivity.subject,
             estado: 'En progreso',
             progreso: pct,
+            detalle_respuestas: this.stepResponseDetails,
             tiempo_minutos: 3
           });
         }
@@ -1652,6 +2563,20 @@ const app = {
         await this.reproducirPreguntaActual(false, true);
       }
     } else {
+      if (rawSpoken && String(rawSpoken).trim()) {
+        this.activityMistakeCount = (this.activityMistakeCount || 0) + 1;
+        if (!Array.isArray(this.countingMistakes)) {
+          this.countingMistakes = [];
+        }
+        const stepLabel = ex && ex.targetNumber !== undefined
+          ? `Ejercicio ${this.currentExerciseIndex + 1} [esperado ${ex.targetNumber}, dijo "${String(rawSpoken).trim()}"]`
+          : `Pregunta ${this.currentExerciseIndex + 1} (dijo "${String(rawSpoken).trim()}")`;
+        this.countingMistakes.push(stepLabel);
+        if (!Array.isArray(this._currentStepMistakes)) {
+          this._currentStepMistakes = [];
+        }
+        this._currentStepMistakes.push(`Dijo "${String(rawSpoken).trim()}"`);
+      }
       // [REQ-03.3] Estado Orientando / Pistas: Expresión amable señalando el pecho
       this.robotState = 'guiding';
       this.render();
@@ -1677,7 +2602,7 @@ const app = {
     if (!this.currentUser || this.currentUser.role !== 'apoderado') return;
     this.isLoadingReporteria = true;
     const pupilId = this.selectedPupilIndex === 0 ? 5 : 6;
-    if (window.mobileApi && mobileApi.isOnline) {
+    if (window.mobileApi) {
       const rep = await mobileApi.getReporteria(pupilId);
       if (rep) {
         this.reporteriaData = rep;
@@ -1686,28 +2611,85 @@ const app = {
     this.isLoadingReporteria = false;
   },
 
-  async cargarMensajesConversacion(convId, isBackground = false) {
-    if (window.mobileApi && mobileApi.isOnline) {
-      const msgs = await mobileApi.getMensajes(convId);
-      if (Array.isArray(msgs)) {
-        const oldLen = (this.mensajesPorConversacion[convId] || []).length;
-        this.mensajesPorConversacion[convId] = msgs.map(m => ({
-          id: m.id,
-          remitenteId: m.remitente_usuario_id,
-          remitenteNombre: m.remitente_nombre,
-          texto: m.contenido,
-          hora: m.hora || 'Hoy',
-          leido: Boolean(m.leido),
-          esMio: this.currentUser ? m.remitente_usuario_id === this.currentUser.id : false
-        }));
+  syncComunicadosYAcusesDesdeAlertas() {
+    const alertas = Array.isArray(this.alertasLocales) ? this.alertasLocales : [];
+    this.comunicadosGrupales = alertas.map(a => ({
+      id: a.id,
+      remitenteNombre: 'Marcela Soto Valenzuela (Profesora Jefe)',
+      curso: '1° Básico B',
+      fecha: a.fecha_creacion || 'Hoy',
+      titulo: a.titulo,
+      contenido: a.contenido || a.mensaje || '',
+      tipo: a.tipo || 'informativa',
+      estado: a.estado || 'PENDIENTE',
+      fechaLectura: a.fecha_lectura || null,
+      confirmado: a.estado === 'LEIDA' || Boolean(this.acuseStatus[a.id])
+    }));
 
-        if (isBackground && msgs.length !== oldLen) {
-          this.render();
-          setTimeout(() => {
-            const stream = document.getElementById('chat-stream');
-            if (stream) stream.scrollTop = stream.scrollHeight;
-          }, 40);
+    const carolina = this.apoderadosCurso.find(x => x.id === 13);
+    if (carolina) {
+      if (alertas.length === 0) {
+        carolina.confirmado = false;
+        carolina.fechaAcuse = 'Sin alertas activas';
+      } else {
+        const readList = alertas.filter(a => a.estado === 'LEIDA' || Boolean(this.acuseStatus[a.id]));
+        if (readList.length === alertas.length) {
+          carolina.confirmado = true;
+          carolina.fechaAcuse = readList[0].fecha_lectura || 'Confirmada';
+        } else if (readList.length > 0) {
+          carolina.confirmado = false;
+          carolina.fechaAcuse = `${readList.length}/${alertas.length} leídas`;
+        } else {
+          carolina.confirmado = false;
+          carolina.fechaAcuse = 'Pendiente';
         }
+      }
+    }
+  },
+
+  async cargarAlertasMovil(silent = false) {
+    if (!window.mobileApi || !mobileApi.getAlertasUsuario) return;
+    try {
+      const alertasApi = await mobileApi.getAlertasUsuario(13);
+      if (Array.isArray(alertasApi)) {
+        const prevSnap = JSON.stringify(this.alertasLocales || []);
+        this.alertasLocales = alertasApi.map(a => ({
+          ...a,
+          alumno: a.alumno || (this.selectedPupilIndex === 0 ? 'Mateo González (1° Básico B)' : 'Sofía González (2° Básico A)')
+        }));
+        this.syncComunicadosYAcusesDesdeAlertas();
+        const nextSnap = JSON.stringify(this.alertasLocales || []);
+        if (!silent || prevSnap !== nextSnap) {
+          this.render();
+        }
+      }
+    } catch (e) {
+      console.warn('[Mobile] Error cargando alertas:', e);
+    }
+  },
+
+  async cargarMensajesConversacion(convId, isBackground = false) {
+    if (!window.mobileApi) return;
+    const msgs = await mobileApi.getMensajes(convId);
+    if (Array.isArray(msgs)) {
+      const prevSnap = JSON.stringify(this.mensajesPorConversacion[convId] || []);
+      const mapped = msgs.map(m => ({
+        id: m.id,
+        remitenteId: m.remitente_usuario_id,
+        remitenteNombre: m.remitente_nombre,
+        texto: m.contenido,
+        hora: m.hora || 'Hoy',
+        leido: Boolean(m.leido),
+        esMio: this.currentUser ? Number(m.remitente_usuario_id) === Number(this.currentUser.id) : false
+      }));
+      this.mensajesPorConversacion[convId] = mapped;
+
+      if (isBackground && prevSnap !== JSON.stringify(mapped)) {
+        this.render();
+        setTimeout(() => {
+          const stream = document.getElementById('chat-stream');
+          if (stream) stream.scrollTop = stream.scrollHeight;
+        }, 40);
       }
     }
   },
@@ -1717,12 +2699,42 @@ const app = {
   // -------------------------------------------------------------
   setTab(tab) {
     this.currentTab = tab;
+    this._resetScrollOnNextRender = true;
+    this.mobileAlertSuccessMsg = '';
+    this.mobileComSuccessMsg = '';
+    if (tab === 'asignar' && this.isMobileTeacherAuthorized()) {
+      this.cargarEstadoActividadesCursoMovil(true).then(() => this.render());
+    } else if (tab === 'mensajeria') {
+      this.cargarMensajesConversacion(this.activeConversacionId, true).then(() => this.render());
+      this.cargarAlertasMovil(true);
+    } else if (tab === 'alertas') {
+      this.cargarAlertasMovil(false);
+    }
     this.render();
   },
 
   setChatMode(mode) {
     this.chatMode = mode;
+    this.mobileComSuccessMsg = '';
     this.render();
+    if (mode === 'individual') {
+      this.cargarMensajesConversacion(this.activeConversacionId, true).then(() => {
+        const stream = document.getElementById('chat-stream');
+        if (stream) stream.scrollTop = stream.scrollHeight;
+      });
+    } else if (mode === 'grupal') {
+      this.cargarAlertasMovil(true);
+    }
+  },
+
+  async selectMobileConversation(convId) {
+    this.activeConversacionId = Number(convId) || 1;
+    await this.cargarMensajesConversacion(this.activeConversacionId);
+    this.render();
+    setTimeout(() => {
+      const stream = document.getElementById('chat-stream');
+      if (stream) stream.scrollTop = stream.scrollHeight;
+    }, 40);
   },
 
   async setPupil(index) {
@@ -1738,26 +2750,26 @@ const app = {
   // -------------------------------------------------------------
   async confirmarAlerta(alertaId) {
     this.acuseStatus[alertaId] = true;
-    const a = this.alertasLocales.find(x => x.id === alertaId);
+    const horaAhora = 'Hoy ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const a = this.alertasLocales.find(x => Number(x.id) === Number(alertaId));
     if (a) {
       a.estado = 'LEIDA';
-      a.fecha_lectura = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      a.fecha_lectura = horaAhora;
     }
-
-    const itemCurso = this.apoderadosCurso.find(x => x.id === 13);
-    if (itemCurso) {
-      itemCurso.confirmado = true;
-      itemCurso.fechaAcuse = 'Hoy ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    }
+    this.syncComunicadosYAcusesDesdeAlertas();
+    this.render();
 
     if (window.mobileApi) {
       await mobileApi.confirmarAlerta(alertaId);
+      await this.cargarAlertasMovil(true);
     }
     this.render();
   },
 
   async emitirAvisoReforzamiento(e) {
     if (e && e.preventDefault) e.preventDefault();
+    if (this.isSendingMobileAlert) return;
+
     const tituloInput = document.getElementById('aviso-titulo');
     const descInput = document.getElementById('aviso-desc');
     const tipoSelect = document.getElementById('aviso-tipo');
@@ -1772,40 +2784,44 @@ const app = {
       return;
     }
 
-    const nuevaAlerta = {
-      id: Date.now(),
-      usuario_id: 13,
-      tipo: tipo,
-      titulo: titulo,
-      contenido: contenido,
-      fecha_creacion: 'Hoy ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      estado: 'PENDIENTE',
-      alumno: 'Curso 1° Básico B'
-    };
+    this.isSendingMobileAlert = true;
+    this.mobileAlertSuccessMsg = '';
+    this.render();
 
-    this.alertasLocales.unshift(nuevaAlerta);
-    this.apoderadosCurso.forEach(apo => {
-      apo.confirmado = false;
-      apo.fechaAcuse = 'Pendiente';
-    });
-
-    if (window.mobileApi) {
-      await mobileApi.emitirAlerta(13, tipo, titulo, contenido);
+    try {
+      if (window.mobileApi) {
+        await mobileApi.emitirAlerta(13, tipo, titulo, contenido);
+        await this.cargarAlertasMovil(true);
+      }
+      this.mobileAlertSuccessMsg = `Alerta "${titulo}" emitida y visible en la bandeja del apoderado.`;
+    } catch (err) {
+      console.warn('[Mobile] Error emitiendo alerta:', err);
+    } finally {
+      this.isSendingMobileAlert = false;
+      this.render();
     }
+  },
 
-    alert('Aviso de reforzamiento emitido a los apoderados del curso.');
+  async vaciarAlertasMovil() {
+    if (!this.isMobileTeacherAuthorized() || !window.mobileApi) return;
+    await mobileApi.limpiarAlertas();
+    this.acuseStatus = {};
+    await this.cargarAlertasMovil(true);
+    this.mobileAlertSuccessMsg = 'Historial de alertas vaciado correctamente.';
     this.render();
   },
 
   async enviarMensajeDirecto(e) {
     if (e && e.preventDefault) e.preventDefault();
+    if (this.isSendingMobileMsg) return;
+
     const input = document.getElementById('chat-directo-input');
     if (!input || !input.value.trim()) return;
 
     const texto = input.value.trim();
     input.value = '';
 
-    const convId = this.activeConversacionId;
+    const convId = this.activeConversacionId || 1;
     if (!this.mensajesPorConversacion[convId]) {
       this.mensajesPorConversacion[convId] = [];
     }
@@ -1820,28 +2836,32 @@ const app = {
       esMio: true
     };
     this.mensajesPorConversacion[convId].push(nuevoMsg);
-
-    if (window.mobileApi) {
-      await mobileApi.enviarMensaje(convId, this.currentUser.id, texto);
-    }
-
+    this.isSendingMobileMsg = true;
     this.render();
-    setTimeout(() => {
-      const stream = document.getElementById('chat-stream');
-      if (stream) stream.scrollTop = stream.scrollHeight;
-    }, 50);
-  },
 
-  confirmarLecturaComunicado(comunicadoId) {
-    const com = this.comunicadosGrupales.find(c => c.id === comunicadoId);
-    if (com) {
-      com.confirmado = true;
+    try {
+      if (window.mobileApi) {
+        await mobileApi.enviarMensaje(convId, this.currentUser.id, texto);
+        await this.cargarMensajesConversacion(convId);
+      }
+    } finally {
+      this.isSendingMobileMsg = false;
       this.render();
+      setTimeout(() => {
+        const stream = document.getElementById('chat-stream');
+        if (stream) stream.scrollTop = stream.scrollHeight;
+      }, 50);
     }
   },
 
-  publicarComunicadoGrupal(e) {
+  async confirmarLecturaComunicado(comunicadoId) {
+    await this.confirmarAlerta(comunicadoId);
+  },
+
+  async publicarComunicadoGrupal(e) {
     if (e && e.preventDefault) e.preventDefault();
+    if (this.isSendingMobileAlert) return;
+
     const titEl = document.getElementById('comunicado-titulo');
     const contEl = document.getElementById('comunicado-contenido');
     if (!titEl || !contEl) return;
@@ -1853,20 +2873,22 @@ const app = {
       return;
     }
 
-    this.comunicadosGrupales.unshift({
-      id: Date.now(),
-      remitenteNombre: this.currentUser.name + ' (Profesora Jefe)',
-      curso: '1° Básico B',
-      fecha: 'Hoy ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      titulo: tit,
-      contenido: cont,
-      confirmado: true
-    });
-
-    titEl.value = '';
-    contEl.value = '';
-    alert('Comunicado oficial publicado en el canal grupal del curso.');
+    this.isSendingMobileAlert = true;
+    this.mobileComSuccessMsg = '';
     this.render();
+
+    try {
+      if (window.mobileApi) {
+        await mobileApi.emitirAlerta(13, 'informativa', tit, cont);
+        await this.cargarAlertasMovil(true);
+      }
+      this.mobileComSuccessMsg = `Comunicado "${tit}" publicado en la nube para todo el curso.`;
+    } catch (err) {
+      console.warn('[Mobile] Error publicando comunicado:', err);
+    } finally {
+      this.isSendingMobileAlert = false;
+      this.render();
+    }
   },
 
   // -------------------------------------------------------------
@@ -1885,7 +2907,7 @@ const app = {
     if (legacyInput && legacyInput.value && legacyInput.value.trim()) {
       return legacyInput.value.trim();
     }
-    return window.mobileApi ? mobileApi.getServerHostUrl() : 'http://192.168.1.113:8000';
+    return window.mobileApi ? mobileApi.getServerHostUrl() : 'https://educonnect-capstone-2026-8f776.web.app';
   },
 
   async testConnection(candidateUrl) {
@@ -1895,18 +2917,17 @@ const app = {
     if (rawUrl) {
       rawUrl = rawUrl.trim();
       if (!/^https?:\/\//i.test(rawUrl)) {
-        rawUrl = 'http://' + rawUrl;
+        rawUrl = 'https://' + rawUrl;
       }
     }
 
-    // [REQ-01.5] Guardar de forma obligatoria y permanente en localStorage ('educonnect_api_url')
     if (window.mobileApi && rawUrl) {
       mobileApi.setBaseUrl(rawUrl);
     }
 
     this.isTestingConnection = true;
     this.testServerConnectionStatus = 'testing';
-    this.testServerConnectionMessage = 'Probando conexión con /api/health...';
+    this.testServerConnectionMessage = 'Probando conexión con la nube...';
     this.render();
 
     try {
@@ -1918,12 +2939,9 @@ const app = {
       this.isTestingConnection = false;
 
       if (result && result.success) {
-        // [REQ-01.4] Mensaje visual claro en Verde
         const activeHost = result.host || (window.mobileApi ? mobileApi.getServerHostUrl() : rawUrl);
         this.testServerConnectionStatus = 'success';
-        this.testServerConnectionMessage = result.autoRecovered
-          ? `Conectado con éxito (Auto-detectado: ${activeHost})`
-          : `Conectado con éxito al servidor (${activeHost})`;
+        this.testServerConnectionMessage = `Conectado con éxito (${activeHost})`;
         this.render();
 
         if (this.currentUser) {
@@ -1931,18 +2949,13 @@ const app = {
         }
         return;
       } else {
-        // [REQ-01.4] Mensaje visual claro en Rojo
         this.testServerConnectionStatus = 'error';
-        if (rawUrl && (rawUrl.includes('127.0.0.1') || rawUrl.includes('localhost'))) {
-          this.testServerConnectionMessage = 'Error de conexión: en celular usa 192.168.1.113:8000';
-        } else {
-          this.testServerConnectionMessage = 'Error de conexión: verifique IP y puerto 8000';
-        }
+        this.testServerConnectionMessage = 'Error de conexión: verifique su conexión a internet';
       }
     } catch (err) {
       this.isTestingConnection = false;
       this.testServerConnectionStatus = 'error';
-      this.testServerConnectionMessage = 'Error de conexión: verifique IP y puerto 8000';
+      this.testServerConnectionMessage = 'Error de conexión: verifique su conexión a internet';
     }
     this.render();
   },
@@ -1979,6 +2992,14 @@ const app = {
     const root = document.getElementById('mobile-root');
     if (!root) return;
 
+    const prevMain = root.querySelector('main');
+    const prevMainScroll = prevMain ? prevMain.scrollTop : 0;
+    const prevWinScroll = window.scrollY || document.documentElement.scrollTop || 0;
+    const prevChatStream = document.getElementById('chat-stream');
+    const prevChatScroll = prevChatStream ? prevChatStream.scrollTop : null;
+    const prevModalBody = document.getElementById('mobile-review-modal-body');
+    const prevModalScroll = prevModalBody ? prevModalBody.scrollTop : null;
+
     if (!this.currentUser) {
       root.innerHTML = this.renderLoginView();
     } else if (this.currentUser.role === 'alumno' && this.activeChildActivity) {
@@ -1993,10 +3014,16 @@ const app = {
         </main>
       `;
     } else {
+      if (this.currentTab === 'asignar' && !this.isMobileTeacherAuthorized()) {
+        this.currentTab = 'mensajeria';
+        this.activeTeacherReview = null;
+        this.isMobileAssignModalOpen = false;
+      }
       root.innerHTML = `
         ${this.renderHeader()}
         <main class="flex-1 overflow-y-auto px-4 py-3 space-y-3 pb-24">
           ${this.currentTab === 'mensajeria' ? this.renderMensajeriaTab() : ''}
+          ${this.currentTab === 'asignar' && this.isMobileTeacherAuthorized() ? this.renderAsignarTab() : ''}
           ${this.currentTab === 'alertas' ? this.renderAlertasTab() : ''}
           ${this.currentTab === 'dashboard' ? this.renderDashboardTab() : ''}
           ${this.currentTab === 'config' ? this.renderConfigTab() : ''}
@@ -2009,8 +3036,39 @@ const app = {
       root.insertAdjacentHTML('beforeend', this.renderServerModal());
     }
 
+    if (this.showPhotoModal && this.canEditProfilePhoto()) {
+      root.insertAdjacentHTML('beforeend', this.renderMobilePhotoModal());
+    }
+
     if (window.lucide) {
       lucide.createIcons();
+    }
+
+    if (this.isMobileAssignModalOpen && this.isMobileTeacherAuthorized()) {
+      setTimeout(() => this.ensureMobileAssignDialogShown(), 0);
+    }
+
+    if (this._resetScrollOnNextRender) {
+      this._resetScrollOnNextRender = false;
+      const nextMain = root.querySelector('main');
+      if (nextMain) nextMain.scrollTop = 0;
+      window.scrollTo(0, 0);
+    } else {
+      const nextMain = root.querySelector('main');
+      if (nextMain && prevMainScroll > 0) {
+        nextMain.scrollTop = prevMainScroll;
+      }
+      if (prevWinScroll > 0) {
+        window.scrollTo(0, prevWinScroll);
+      }
+      const nextChatStream = document.getElementById('chat-stream');
+      if (nextChatStream && prevChatScroll !== null) {
+        nextChatStream.scrollTop = prevChatScroll;
+      }
+      const nextModalBody = document.getElementById('mobile-review-modal-body');
+      if (nextModalBody && prevModalScroll !== null) {
+        nextModalBody.scrollTop = prevModalScroll;
+      }
     }
   },
 
@@ -2021,96 +3079,54 @@ const app = {
     const isOnline = window.mobileApi && mobileApi.isOnline;
     return `
       <div class="flex-1 flex flex-col justify-between p-6 bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 text-white safe-top-padding">
-        <div class="space-y-4 pt-2">
+        <div class="space-y-5 pt-4">
           <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2.5">
-              <div class="w-10 h-10 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center font-black shadow-lg">
-                <i data-lucide="graduation-cap" class="w-6 h-6"></i>
+            <div class="flex items-center gap-3">
+              <div class="w-12 h-12 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center font-black shadow-lg">
+                <i data-lucide="bot" class="w-7 h-7"></i>
               </div>
               <div>
-                <h1 class="font-black text-lg text-white tracking-tight">EduConnect Móvil</h1>
-                <p class="text-[11px] text-amber-300 font-bold uppercase tracking-wider">Colegio San Andrés</p>
+                <h1 class="font-black text-xl text-white tracking-tight">EduConnect</h1>
+                <p class="text-[11px] text-amber-300 font-bold uppercase tracking-wider">Colegio San Andrés • 1° y 2° Básico</p>
               </div>
             </div>
-            <!-- [REQ-01.1] Botón visible de ajustes (ícono de engranaje) -->
-            <button onclick="app.showServerModal = true; app.render();" title="Ajustes de Servidor LAN" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-amber-300 hover:text-white transition flex items-center gap-1.5 shadow-sm cursor-pointer">
-              <i data-lucide="settings" class="w-4 h-4"></i>
-              <span class="text-[11px] font-black">IP / Red</span>
-            </button>
-          </div>
-
-          <div class="p-3 rounded-2xl bg-slate-800/80 border border-slate-700/80 flex items-center justify-between text-xs">
-            <span class="text-slate-300 font-medium">Servidor Backend:</span>
-            <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black ${isOnline ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30' : 'bg-amber-500/20 text-amber-300 border border-amber-400/30'}">
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black ${isOnline ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30' : 'bg-amber-500/20 text-amber-300 border border-amber-400/30'}">
               <span class="w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}"></span>
-              ${isOnline ? 'Conectado (API activa)' : 'Modo Local / Offline'}
+              ${isOnline ? 'En línea' : 'Respaldo'}
             </span>
           </div>
 
-          <!-- [REQ-02.1] Botón de Acceso Directo Destacado para el Estudiante -->
-          <div class="pt-1 space-y-2">
-            <span class="block text-[11px] font-black text-amber-300 uppercase tracking-wider">Portal Infantil por Voz (1° y 2° Básico)</span>
-            <button onclick="app.loginDemo('alumno')" class="w-full p-4 rounded-2xl bg-gradient-to-r from-amber-400 via-amber-300 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 shadow-lg transition active:scale-95 flex items-center justify-between cursor-pointer border-2 border-white/40">
-              <div class="flex items-center gap-3 text-left">
-                <div class="w-12 h-12 rounded-2xl bg-slate-950 text-amber-400 flex items-center justify-center shadow-md flex-shrink-0">
-                  <i data-lucide="bot" class="w-7 h-7"></i>
-                </div>
-                <div>
-                  <span class="block text-[10px] font-black uppercase tracking-wider text-slate-800">Acceso Directo Estudiante</span>
-                  <span class="block text-sm font-black text-slate-950 leading-tight">Alumno: Mateo González (1° Básico B)</span>
-                </div>
-              </div>
-              <i data-lucide="chevron-right" class="w-6 h-6 text-slate-950 flex-shrink-0"></i>
-            </button>
-          </div>
-
-          <!-- Acceso Rápido para Profesor y Apoderado -->
-          <div class="space-y-2 pt-1">
-            <span class="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">Acceso Rápido Docente y Familia</span>
-            <div class="grid grid-cols-2 gap-2.5">
-              <button onclick="app.loginDemo('profesora')" class="p-3 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-left transition active:scale-95 cursor-pointer">
-                <div class="flex items-center gap-2 mb-1">
-                  <span class="w-2 h-2 rounded-full bg-blue-400"></span>
-                  <span class="text-xs font-black text-white">Profesor</span>
-                </div>
-                <p class="text-[11px] text-slate-400">Tía Marcela (1° B)</p>
-              </button>
-              <button onclick="app.loginDemo('apoderado')" class="p-3 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-left transition active:scale-95 cursor-pointer">
-                <div class="flex items-center gap-2 mb-1">
-                  <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-                  <span class="text-xs font-black text-white">Apoderado</span>
-                </div>
-                <p class="text-[11px] text-slate-400">Carolina (Mateo)</p>
-              </button>
-            </div>
+          <div class="p-4 rounded-2xl bg-slate-800/80 border border-slate-700/80 space-y-1">
+            <h2 class="text-sm font-black text-white">Acceso Institucional Seguro</h2>
+            <p class="text-xs text-slate-300 leading-relaxed">Ingresa con tu correo y contraseña institucional de estudiante, apoderado o docente.</p>
           </div>
 
           ${this.errorMessage ? `
-            <div class="p-3 rounded-xl bg-rose-500/20 border border-rose-400/30 text-rose-200 text-xs font-semibold flex items-center gap-2">
+            <div class="p-3.5 rounded-xl bg-rose-500/20 border border-rose-400/30 text-rose-200 text-xs font-semibold flex items-center gap-2">
               <i data-lucide="alert-circle" class="w-4 h-4 flex-shrink-0 text-rose-400"></i>
               <span>${this.errorMessage}</span>
             </div>
           ` : ''}
 
           <!-- Formulario Credenciales Institucionales -->
-          <form onsubmit="app.handleLoginForm(event)" class="space-y-2.5 pt-2 border-t border-slate-800">
+          <form onsubmit="app.handleLoginForm(event)" class="space-y-3.5 pt-2">
             <div>
-              <label class="block text-[11px] font-bold text-slate-300 mb-1">Correo Institucional</label>
-              <input id="mob-email" type="email" placeholder="alumno@sanandres.cl / apoderado@sanandres.cl" class="w-full px-3.5 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-400 placeholder-slate-500 transition">
+              <label class="block text-xs font-bold text-slate-300 mb-1.5">Correo Institucional</label>
+              <input id="mob-email" type="email" required autocomplete="username" placeholder="usuario@sanandres.cl" class="w-full px-3.5 py-3 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-400 placeholder-slate-500 transition">
             </div>
             <div>
-              <label class="block text-[11px] font-bold text-slate-300 mb-1">Contraseña</label>
-              <input id="mob-password" type="password" placeholder="••••••••" class="w-full px-3.5 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-400 placeholder-slate-500 transition">
+              <label class="block text-xs font-bold text-slate-300 mb-1.5">Contraseña</label>
+              <input id="mob-password" type="password" required autocomplete="current-password" placeholder="••••••••" class="w-full px-3.5 py-3 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:outline-none focus:border-amber-400 placeholder-slate-500 transition">
             </div>
-            <button type="submit" class="w-full py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 active:scale-98 text-white font-black text-xs shadow-md transition flex items-center justify-center gap-2 cursor-pointer">
+            <button type="submit" class="w-full py-3.5 rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-98 text-slate-950 font-black text-xs uppercase tracking-wider shadow-lg transition flex items-center justify-center gap-2 cursor-pointer">
               <i data-lucide="log-in" class="w-4 h-4"></i>
-              <span>Ingresar con Cuenta</span>
+              <span>Iniciar Sesión</span>
             </button>
           </form>
         </div>
 
         <div class="pt-3 text-center text-[11px] text-slate-500">
-          EduConnect v2.5 • Capstone APT122
+          EduConnect • Plataforma Escolar Segura
         </div>
       </div>
     `;
@@ -2119,13 +3135,17 @@ const app = {
   renderHeader() {
     const isOnline = window.mobileApi && mobileApi.isOnline;
     const isProf = this.currentUser.role === 'profesora';
+    const isAdmin = this.currentUser.role === 'admin';
     const isAlumno = this.currentUser.role === 'alumno';
     const badgeColor = isAlumno
       ? 'bg-amber-400/20 text-amber-300 border-amber-400/30'
-      : (isProf ? 'bg-blue-500/20 text-blue-300 border-blue-400/30' : 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30');
-    const iconBg = isAlumno ? 'bg-amber-400 text-slate-950' : (isProf ? 'bg-blue-600 text-white' : 'bg-emerald-600 text-white');
-    const iconName = isAlumno ? 'bot' : (isProf ? 'book-open' : 'users');
+      : (isProf
+        ? 'bg-blue-500/20 text-blue-300 border-blue-400/30'
+        : (isAdmin ? 'bg-indigo-500/20 text-indigo-300 border-indigo-400/30' : 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30'));
+    const roleChipLabel = isProf ? 'Docente' : (isAdmin ? 'Director' : 'Apoderado');
     const firstName = (this.currentUser && this.currentUser.name) ? this.currentUser.name.split(' ')[0] : 'Mateo';
+    const avatarUrl = !isAlumno ? this.getUserAvatarUrl(this.currentUser) : '';
+    const defaultAvatarUrl = !isAlumno ? this.getDefaultAvatarUrl(this.currentUser) : '';
 
     return `
       <header class="bg-slate-900 text-white px-4 py-3 border-b border-slate-800 sticky top-0 z-30 flex-shrink-0 shadow-md safe-top-padding">
@@ -2141,14 +3161,27 @@ const app = {
             </div>
           ` : `
             <div class="flex items-center gap-2.5">
-              <div class="w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center font-black shadow-xs flex-shrink-0">
-                <i data-lucide="${iconName}" class="w-5 h-5"></i>
-              </div>
+              <button
+                type="button"
+                onclick="app.openMobilePhotoModal()"
+                title="Cambiar foto de perfil"
+                class="relative w-11 h-11 rounded-xl overflow-visible flex-shrink-0 cursor-pointer transition active:scale-95 group"
+              >
+                <img
+                  src="${avatarUrl}"
+                  alt="${this.currentUser.name}"
+                  onerror="this.src='${defaultAvatarUrl}'"
+                  class="w-11 h-11 rounded-xl object-cover border-2 border-slate-700 group-hover:border-amber-400 shadow-xs"
+                />
+                <span class="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-amber-400 text-slate-950 border-2 border-slate-900 flex items-center justify-center shadow-xs">
+                  <i data-lucide="camera" class="w-2.5 h-2.5"></i>
+                </span>
+              </button>
               <div>
-                <div class="flex items-center gap-1.5">
+                <div class="flex items-center gap-1.5 flex-wrap">
                   <h2 class="font-black text-sm text-white">${this.currentUser.name}</h2>
                   <span class="px-2 py-0.5 rounded-full text-[10px] font-black uppercase border ${badgeColor}">
-                    ${isProf ? 'Docente' : 'Apoderado'}
+                    ${roleChipLabel}
                   </span>
                 </div>
                 <p class="text-[11px] text-slate-400 font-medium">${this.currentUser.rolLabel}</p>
@@ -2299,7 +3332,7 @@ const app = {
     return `
       <div class="space-y-4">
         <!-- Saludo Visual con Avatar Robot Leo Destacado y Prominente -->
-        <div class="p-4 rounded-3xl bg-gradient-to-r from-indigo-950 via-blue-900 to-slate-900 text-white shadow-md flex items-center justify-between gap-3 border border-indigo-800/40">
+        <div class="p-4 rounded-3xl bg-gradient-to-r from-indigo-800 via-blue-700 to-indigo-800 text-white shadow-md flex items-center justify-between gap-3 border border-indigo-500/40">
           <div class="flex items-center gap-3.5">
             <!-- Avatar Robot Leo de gran tamaño y prominencia (64x64 px) -->
             <div class="w-16 h-16 min-w-[64px] min-h-[64px] rounded-3xl bg-gradient-to-tr from-amber-400 via-amber-300 to-yellow-300 text-slate-950 flex items-center justify-center flex-shrink-0 shadow-lg ring-4 ring-amber-400/30">
@@ -2322,40 +3355,60 @@ const app = {
           </button>
         </div>
 
-        <!-- Barra Homogénea de Filtros (Todos, Matemáticas, Lenguaje) con Dimensiones de Toque Uniformes sin Desbordes -->
-        <div class="grid grid-cols-3 gap-1.5 bg-slate-200/90 p-1 rounded-2xl border border-slate-300 shadow-inner">
+        <!-- Barra Homogénea de Filtros (Todos, Matemáticas, Lenguaje) con Dimensiones Proporcionales sin Desbordes -->
+        <div class="grid grid-cols-[0.85fr_1.3fr_1.05fr] gap-1.5 bg-slate-200/90 p-1 rounded-2xl border border-slate-300 shadow-inner">
           <button 
             type="button"
             onclick="app.studentActivityFilter = 'all'; app.render();" 
             title="Todas las actividades"
-            class="h-11 min-h-[44px] min-w-0 px-1 rounded-xl text-[11px] font-black transition flex items-center justify-center gap-1 active:scale-95 cursor-pointer ${filter === 'all' ? 'bg-amber-400 text-slate-950 shadow-md ring-2 ring-amber-300' : 'bg-white/70 text-slate-700 hover:bg-white hover:text-slate-900'}"
+            class="h-11 min-h-[44px] min-w-0 px-2 rounded-xl text-[11px] font-black transition flex items-center justify-center gap-1 active:scale-95 cursor-pointer ${filter === 'all' ? 'bg-amber-400 text-slate-950 shadow-md ring-2 ring-amber-300' : 'bg-white/70 text-slate-700 hover:bg-white hover:text-slate-900'}"
           >
             <i data-lucide="layout-grid" class="w-4 h-4 flex-shrink-0"></i>
-            <span class="tracking-tight truncate">Todos</span>
+            <span class="tracking-tight whitespace-nowrap">Todos</span>
           </button>
           <button 
             type="button"
             onclick="app.studentActivityFilter = 'mat'; app.render();" 
             title="Matemáticas"
-            class="h-11 min-h-[44px] min-w-0 px-1 rounded-xl text-[11px] font-black transition flex items-center justify-center gap-1 active:scale-95 cursor-pointer ${filter === 'mat' ? 'bg-amber-400 text-slate-950 shadow-md ring-2 ring-amber-300' : 'bg-white/70 text-slate-700 hover:bg-white hover:text-slate-900'}"
+            class="h-11 min-h-[44px] min-w-0 px-2 rounded-xl text-[11px] font-black transition flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer ${filter === 'mat' ? 'bg-amber-400 text-slate-950 shadow-md ring-2 ring-amber-300' : 'bg-white/70 text-slate-700 hover:bg-white hover:text-slate-900'}"
           >
             <i data-lucide="calculator" class="w-4 h-4 flex-shrink-0"></i>
-            <span class="tracking-tight truncate">Matemáticas</span>
+            <span class="tracking-tight whitespace-nowrap">Matemáticas</span>
           </button>
           <button 
             type="button"
             onclick="app.studentActivityFilter = 'len'; app.render();" 
             title="Lenguaje"
-            class="h-11 min-h-[44px] min-w-0 px-1 rounded-xl text-[11px] font-black transition flex items-center justify-center gap-1 active:scale-95 cursor-pointer ${filter === 'len' ? 'bg-amber-400 text-slate-950 shadow-md ring-2 ring-amber-300' : 'bg-white/70 text-slate-700 hover:bg-white hover:text-slate-900'}"
+            class="h-11 min-h-[44px] min-w-0 px-2 rounded-xl text-[11px] font-black transition flex items-center justify-center gap-1 active:scale-95 cursor-pointer ${filter === 'len' ? 'bg-amber-400 text-slate-950 shadow-md ring-2 ring-amber-300' : 'bg-white/70 text-slate-700 hover:bg-white hover:text-slate-900'}"
           >
             <i data-lucide="book-open" class="w-4 h-4 flex-shrink-0"></i>
-            <span class="tracking-tight truncate">Lenguaje</span>
+            <span class="tracking-tight whitespace-nowrap">Lenguaje</span>
           </button>
         </div>
 
         <!-- Lista de Tarjetas de Actividades con Contenedores Estandarizados (56x56 px) y Cero Códigos Administrativos -->
         <div class="space-y-3">
-          ${filteredList.map(act => {
+          ${filteredList.length === 0 ? `
+            <div class="p-6 rounded-3xl bg-white border-2 border-dashed border-slate-300 text-center space-y-3 shadow-xs">
+              <div class="w-16 h-16 mx-auto rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center shadow-inner">
+                <i data-lucide="sparkles" class="w-8 h-8"></i>
+              </div>
+              <div class="space-y-1">
+                <h4 class="font-black text-base text-slate-900">Aún no tienes tareas asignadas</h4>
+                <p class="text-xs text-slate-600 font-medium leading-relaxed">
+                  Tu profesora irá asignando las actividades una a una para jugar con Robot Leo.
+                </p>
+              </div>
+              <button
+                type="button"
+                onclick="app.sincronizarActividadesAlumno().then(() => app.render())"
+                class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs shadow-sm transition active:scale-95 cursor-pointer"
+              >
+                <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                <span>Actualizar Bandeja</span>
+              </button>
+            </div>
+          ` : filteredList.map(act => {
             const visual = this.getActivityCardVisual(act);
             const isDone = act.status === 'Entregada';
 
@@ -2415,9 +3468,13 @@ const app = {
     const total = exercises.length || 5;
     const currentEx = this.getCurrentExercise() || { number: 1, displayBigNumber: '1', itemType: 'apple', itemCount: 3 };
     const activeNum = this.currentExerciseIndex + 1;
+    const isMicActive = Boolean(this.isRecordingVoice || this.robotState === 'listening');
+    const stageBgClasses = isMicActive
+      ? 'bg-gradient-to-b from-indigo-600 via-sky-100 to-white text-slate-900'
+      : 'bg-gradient-to-b from-slate-800 via-indigo-800 to-blue-800 text-white';
 
     return `
-      <div class="flex-1 flex flex-col justify-between bg-gradient-to-b from-slate-900 via-indigo-950 to-slate-900 text-white h-full overflow-hidden relative select-none safe-top-padding">
+      <div class="flex-1 flex flex-col justify-between ${stageBgClasses} transition-colors duration-500 h-full overflow-hidden relative select-none safe-top-padding">
         
         <!-- [REQ-04.5] Indicador Superior de Avance Numérico y Visual (Círculos/Estrellas con número activo en grande) -->
         <div class="px-4 pt-2 pb-1 flex items-center justify-between z-20">
@@ -2425,7 +3482,7 @@ const app = {
             type="button"
             onclick="app.detenerActividadInfantil()" 
             aria-label="Salir"
-            class="w-12 h-12 min-w-[48px] min-h-[48px] rounded-2xl bg-slate-800/90 border border-slate-700 text-slate-300 hover:text-white flex items-center justify-center shadow-md active:scale-95 cursor-pointer flex-shrink-0"
+            class="w-12 h-12 min-w-[48px] min-h-[48px] rounded-2xl bg-slate-900/80 border border-white/25 text-white hover:bg-slate-900 flex items-center justify-center shadow-md active:scale-95 cursor-pointer flex-shrink-0"
           >
             <i data-lucide="arrow-left" class="w-6 h-6"></i>
           </button>
@@ -2671,21 +3728,21 @@ const app = {
           ${armsSvg}
 
           <!-- Torso / Cuerpo de Robot Leo -->
-          <rect x="62" y="184" width="276" height="250" rx="44" fill="#1cb0f6" stroke="#0f172a" stroke-width="5" />
+          <rect x="58" y="180" width="284" height="258" rx="44" fill="#1cb0f6" stroke="#0f172a" stroke-width="5" />
           <!-- Sombra 2.5D inferior del cuerpo -->
-          <path d="M 68 402 Q 200 440 332 402 L 332 406 A 44 44 0 0 1 294 434 L 106 434 A 44 44 0 0 1 68 406 Z" fill="#1899d6" />
+          <path d="M 64 404 Q 200 444 336 404 L 336 408 A 44 44 0 0 1 298 438 L 102 438 A 44 44 0 0 1 64 408 Z" fill="#1899d6" />
 
           <!-- Pantalla del Pecho de Robot Leo con Marco Dorado Duolingo -->
-          <rect x="74" y="196" width="252" height="224" rx="32" fill="#ffc800" stroke="#0f172a" stroke-width="5" />
+          <rect x="70" y="190" width="260" height="236" rx="32" fill="#ffc800" stroke="#0f172a" stroke-width="5" />
           <!-- Sombra inferior del marco -->
-          <path d="M 78 396 Q 200 424 322 396 L 322 400 A 32 32 0 0 1 294 420 L 106 420 A 32 32 0 0 1 78 400 Z" fill="#e5a500" />
+          <path d="M 74 396 Q 200 428 326 396 L 326 400 A 32 32 0 0 1 298 426 L 102 426 A 32 32 0 0 1 74 400 Z" fill="#e5a500" />
           
           <!-- Pantalla Interior Blanca -->
-          <rect x="82" y="204" width="236" height="208" rx="24" fill="#ffffff" stroke="#e5a500" stroke-width="3" />
+          <rect x="78" y="198" width="244" height="220" rx="22" fill="#ffffff" stroke="#e5a500" stroke-width="3" />
 
           <!-- Contenido Proyectado en el Pecho -->
-          <foreignObject x="84" y="206" width="232" height="204">
-            <div xmlns="http://www.w3.org/1999/xhtml" class="w-full h-full flex flex-col items-center justify-between p-1.5 text-slate-900 overflow-hidden">
+          <foreignObject x="80" y="200" width="240" height="216">
+            <div xmlns="http://www.w3.org/1999/xhtml" class="w-full h-full flex flex-col items-center justify-center p-1 text-slate-900 overflow-hidden">
               ${this.renderChestStimulusHtml(currentEx)}
             </div>
           </foreignObject>
@@ -2721,46 +3778,41 @@ const app = {
     if (actType === 'addition' || actType === 'subtraction') {
       const leftCount = ex.leftCount || 2;
       const rightCount = ex.rightCount || 1;
+      const maxCount = Math.max(leftCount, rightCount);
 
-      // Determinamos columnas e íconos para que cualquier cantidad (hasta 10) quepa con amplitud y elegancia
-      const getGridCols = (count) => {
-        if (count <= 2) return 'grid-cols-2';
-        if (count <= 4) return 'grid-cols-2';
-        if (count <= 6) return 'grid-cols-3';
-        return 'grid-cols-5';
+      // Calculamos columnas estables por inline-grid para garantizar disposición horizontal compacta
+      const getCols = (c) => {
+        if (c <= 2) return c;
+        if (c <= 4) return 2;
+        if (c <= 6) return 3;
+        return 5;
       };
 
-      const getItemSize = (count) => {
-        if (count <= 3) return 'w-7 h-7';
-        if (count <= 5) return 'w-6 h-6';
-        if (count <= 8) return 'w-5 h-5';
-        return 'w-[19px] h-[19px]';
-      };
+      const leftCols = getCols(leftCount);
+      const rightCols = getCols(rightCount);
 
-      const leftGrid = getGridCols(leftCount);
-      const leftSize = getItemSize(leftCount);
-      const leftIcons = Array.from({ length: leftCount }).map(() => this.renderMiniItemSvg(ex.itemType, leftSize)).join('');
+      // Si el grupo tiene más de 5 objetos (como 10 en sumas/restas), usamos iconos de 17px para máxima holgura
+      const itemSize = maxCount > 5 ? 'w-4 h-4' : 'w-5.5 h-5.5';
 
-      const rightGrid = getGridCols(rightCount);
-      const rightSize = getItemSize(rightCount);
-      const rightIcons = Array.from({ length: rightCount }).map(() => this.renderMiniItemSvg(ex.itemType, rightSize)).join('');
+      const leftIcons = Array.from({ length: leftCount }).map(() => this.renderMiniItemSvg(ex.itemType, itemSize)).join('');
+      const rightIcons = Array.from({ length: rightCount }).map(() => this.renderMiniItemSvg(ex.itemType, itemSize)).join('');
 
       const operatorSymbol = actType === 'subtraction' ? '−' : '+';
       return `
-        <div class="w-full h-full flex flex-col items-center justify-center py-2 px-1 select-none">
+        <div class="w-full h-full flex flex-col items-center justify-center p-1 select-none">
           <!-- Número de la operación en tipografía extragrande destacada -->
-          <div style="font-size: 38px; line-height: 1;" class="font-black text-slate-950 tracking-tight bg-amber-100 px-4 py-1.5 rounded-2xl border-2 border-amber-300 shadow-xs mb-2">
+          <div style="font-size: 28px; line-height: 1;" class="font-black text-slate-950 tracking-tight bg-amber-100 px-4 py-1 rounded-xl border-2 border-amber-300 shadow-xs mb-2 flex-shrink-0">
             ${ex.displayBigNumber}
           </div>
-          <!-- Representación pictórica de los grupos con ajuste automático sin desborde -->
-          <div class="flex items-center justify-center gap-2 max-w-full">
-            <div class="grid ${leftGrid} gap-1 bg-blue-50/90 p-2 rounded-2xl border border-blue-200 justify-items-center shadow-xs">
+          <!-- Representación pictórica de los grupos con cuadrícula matemática segura sin desborde -->
+          <div class="flex items-center justify-center gap-1.5 max-w-full">
+            <div style="display: grid; grid-template-columns: repeat(${leftCols}, minmax(0, 1fr)); gap: 3px;" class="bg-blue-50/95 p-1.5 rounded-xl border border-blue-200 justify-items-center shadow-xs">
               ${leftIcons}
             </div>
-            <span style="font-size: 30px; line-height: 1;" class="font-black ${actType === 'subtraction' ? 'text-rose-600' : 'text-blue-700'} px-0.5">
+            <span style="font-size: 24px; line-height: 1;" class="font-black ${actType === 'subtraction' ? 'text-rose-600' : 'text-blue-700'} px-0.5 flex-shrink-0">
               ${operatorSymbol}
             </span>
-            <div class="grid ${rightGrid} gap-1 ${actType === 'subtraction' ? 'bg-rose-50/90 border-rose-200' : 'bg-emerald-50/90 border-emerald-200'} p-2 rounded-2xl border justify-items-center shadow-xs">
+            <div style="display: grid; grid-template-columns: repeat(${rightCols}, minmax(0, 1fr)); gap: 3px;" class="${actType === 'subtraction' ? 'bg-rose-50/95 border-rose-200' : 'bg-emerald-50/95 border-emerald-200'} p-1.5 rounded-xl border justify-items-center shadow-xs">
               ${rightIcons}
             </div>
           </div>
@@ -2915,16 +3967,23 @@ const app = {
   },
 
   renderCanalGrupalView() {
-    const isProf = this.currentUser.role === 'profesora';
+    const isProf = this.isMobileTeacherAuthorized();
     return `
       <div class="space-y-3">
         <div class="p-3.5 rounded-2xl bg-blue-50 border border-blue-200 text-xs text-blue-950 flex items-start gap-2.5">
           <i data-lucide="info" class="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5"></i>
           <div>
             <span class="font-black block">Canal Oficial de Comunicados (1° Básico B)</span>
-            <span class="text-blue-800">Canal institucional unidireccional. La profesora publica anuncios oficiales y las familias registran confirmación de lectura.</span>
+            <span class="text-blue-800">Canal sincronizado en la nube. Los comunicados oficiales y alertas aparecen en tiempo real y permiten confirmar lectura.</span>
           </div>
         </div>
+
+        ${this.mobileComSuccessMsg ? `
+          <div class="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-bold flex items-center gap-2">
+            <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600 flex-shrink-0"></i>
+            <span>${this.mobileComSuccessMsg}</span>
+          </div>
+        ` : ''}
 
         ${isProf ? `
           <div class="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-2.5">
@@ -2935,33 +3994,44 @@ const app = {
             <form onsubmit="app.publicarComunicadoGrupal(event)" class="space-y-2">
               <input id="comunicado-titulo" type="text" placeholder="Título del comunicado oficial..." class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-500">
               <textarea id="comunicado-contenido" rows="2" placeholder="Redacta las indicaciones oficiales para las familias del curso..." class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-800 focus:outline-none focus:border-blue-500"></textarea>
-              <button type="submit" class="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer">
+              <button type="submit" ${this.isSendingMobileAlert ? 'disabled' : ''} class="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60">
                 <i data-lucide="send" class="w-3.5 h-3.5"></i>
-                <span>Emitir Comunicado a Todo el Curso</span>
+                <span>${this.isSendingMobileAlert ? 'Publicando...' : 'Emitir Comunicado a Todo el Curso'}</span>
               </button>
             </form>
           </div>
         ` : ''}
 
         <div class="space-y-2.5">
-          ${this.comunicadosGrupales.map(com => `
-            <div class="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-2">
+          ${this.comunicadosGrupales.length === 0 ? `
+            <div class="p-6 rounded-2xl bg-white border border-dashed border-slate-300 text-center space-y-1.5">
+              <i data-lucide="inbox" class="w-6 h-6 text-slate-400 mx-auto"></i>
+              <p class="text-xs font-bold text-slate-600">No hay comunicados publicados en el canal grupal</p>
+              <p class="text-[11px] text-slate-400">Cuando la profesora emita un comunicado o alerta oficial aparecerá aquí.</p>
+            </div>
+          ` : this.comunicadosGrupales.map(com => `
+            <div class="p-3.5 rounded-2xl bg-white border ${!com.confirmado && com.tipo === 'urgente' ? 'border-rose-300' : 'border-slate-200'} shadow-xs space-y-2">
               <div class="flex items-start justify-between gap-2">
                 <div>
-                  <span class="text-[10px] font-black uppercase text-blue-600 tracking-wider">${com.curso} • ${com.fecha}</span>
-                  <h4 class="font-black text-xs text-slate-900 leading-snug">${com.titulo}</h4>
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${com.tipo === 'urgente' ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'}">
+                      ${com.tipo === 'urgente' ? 'Urgente' : 'Comunicado'}
+                    </span>
+                    <span class="text-[10px] font-black uppercase text-slate-500 tracking-wider">${com.curso} • ${com.fecha}</span>
+                  </div>
+                  <h4 class="font-black text-xs text-slate-900 leading-snug mt-1">${com.titulo}</h4>
                 </div>
                 <span class="w-7 h-7 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center flex-shrink-0">
                   <i data-lucide="bell" class="w-4 h-4"></i>
                 </span>
               </div>
-              <p class="text-xs text-slate-700 leading-relaxed">${com.contenido}</p>
+              ${com.contenido ? `<p class="text-xs text-slate-700 leading-relaxed">${com.contenido}</p>` : ''}
               <div class="pt-1 border-t border-slate-100 flex items-center justify-between text-[11px]">
                 <span class="text-slate-500 font-medium">${com.remitenteNombre}</span>
                 ${isProf ? `
-                  <span class="inline-flex items-center gap-1 text-emerald-700 font-bold">
-                    <i data-lucide="check-check" class="w-3.5 h-3.5"></i>
-                    <span>Emitido al Curso</span>
+                  <span class="inline-flex items-center gap-1 font-bold ${com.confirmado ? 'text-emerald-700' : 'text-amber-700'}">
+                    <i data-lucide="${com.confirmado ? 'check-check' : 'clock'}" class="w-3.5 h-3.5"></i>
+                    <span>${com.confirmado ? 'Leído por Apoderado' : 'Pendiente de Acuse'}</span>
                   </span>
                 ` : `
                   ${com.confirmado ? `
@@ -2985,33 +4055,35 @@ const app = {
   },
 
   renderChatIndividualView() {
-    const isProf = this.currentUser.role === 'profesora';
-    const convId = this.activeConversacionId;
-    const msgs = this.mensajesPorConversacion[convId] || [
-      {
-        id: 1,
-        remitenteId: 12,
-        remitenteNombre: 'Tía Marcela Soto',
-        texto: 'Estimada Carolina, buenas tardes. Le comento que Mateo hoy realizó su primera actividad con el Agente de Voz en la sala y estuvo muy motivado.',
-        hora: '16:10',
-        leido: true,
-        esMio: isProf
-      },
-      {
-        id: 2,
-        remitenteId: 13,
-        remitenteNombre: 'Carolina Tapia',
-        texto: 'Excelente noticia Tía Marcela. En casa me contó muy entusiasmado de las preguntas de adición. Muchas gracias por el reporte.',
-        hora: '17:05',
-        leido: true,
-        esMio: !isProf
-      }
-    ];
+    const isProf = this.isMobileTeacherAuthorized();
+    const convId = this.activeConversacionId || 1;
+    const msgs = this.mensajesPorConversacion[convId] || [];
 
-    const interlocutor = isProf ? 'Carolina Tapia (Apoderada de Mateo)' : 'Tía Marcela Soto (Profesora Jefe 1° B)';
+    const interlocutor = isProf
+      ? (convId === 2 ? 'Carolina Tapia (Apoderada de Sofía 2° A)' : 'Carolina Tapia (Apoderada de Mateo 1° B)')
+      : 'Tía Marcela Soto (Profesora Jefe 1° B)';
 
     return `
       <div class="flex flex-col bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden h-[460px]">
+        ${isProf ? `
+          <div class="px-3 pt-2.5 pb-2 bg-slate-100 border-b border-slate-200 flex items-center gap-1.5">
+            <span class="text-[10px] font-black uppercase text-slate-500 mr-1">Canal:</span>
+            <button
+              type="button"
+              onclick="app.selectMobileConversation(1)"
+              class="px-2.5 py-1 rounded-lg text-[11px] font-black transition cursor-pointer ${convId === 1 ? 'bg-blue-600 text-white shadow-2xs' : 'bg-white text-slate-700 border border-slate-200'}"
+            >
+              Mateo (1° B)
+            </button>
+            <button
+              type="button"
+              onclick="app.selectMobileConversation(2)"
+              class="px-2.5 py-1 rounded-lg text-[11px] font-black transition cursor-pointer ${convId === 2 ? 'bg-blue-600 text-white shadow-2xs' : 'bg-white text-slate-700 border border-slate-200'}"
+            >
+              Sofía (2° A)
+            </button>
+          </div>
+        ` : ''}
         <div class="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
           <div class="flex items-center gap-2">
             <div class="w-8 h-8 rounded-full ${isProf ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'} flex items-center justify-center font-bold text-xs">
@@ -3026,12 +4098,18 @@ const app = {
             </div>
           </div>
           <span class="text-[10px] text-slate-500 font-semibold bg-white px-2 py-0.5 rounded-md border border-slate-200">
-            ${isProf ? 'Familia González' : '1° Básico B'}
+            ${convId === 2 ? '2° Básico A' : '1° Básico B'}
           </span>
         </div>
 
         <div id="chat-stream" class="flex-1 p-3 overflow-y-auto space-y-2.5 bg-slate-50/50">
-          ${msgs.map(m => `
+          ${msgs.length === 0 ? `
+            <div class="h-full flex flex-col items-center justify-center text-center p-4 space-y-1.5 text-slate-400">
+              <i data-lucide="message-square" class="w-7 h-7 text-slate-300"></i>
+              <p class="text-xs font-bold text-slate-600">Sin mensajes en esta conversación (0 mensajes)</p>
+              <p class="text-[11px] text-slate-400">Escribe un mensaje abajo para iniciar el diálogo.</p>
+            </div>
+          ` : msgs.map(m => `
             <div class="flex flex-col ${m.esMio ? 'items-end' : 'items-start'}">
               <div class="max-w-[82%] px-3.5 py-2 rounded-2xl text-xs leading-relaxed shadow-2xs ${m.esMio ? 'bg-blue-600 text-white rounded-br-xs' : 'bg-white text-slate-800 border border-slate-200/90 rounded-bl-xs'}">
                 <span class="block text-[10px] font-black mb-0.5 ${m.esMio ? 'text-blue-100' : 'text-slate-500'}">${m.remitenteNombre}</span>
@@ -3039,9 +4117,6 @@ const app = {
               </div>
               <div class="flex items-center gap-1 mt-0.5 px-1 text-[10px] text-slate-400">
                 <span>${m.hora}</span>
-                ${m.esMio ? `
-                  <i data-lucide="${m.leido ? 'check-check' : 'check'}" class="w-3 h-3 ${m.leido ? 'text-blue-600' : 'text-slate-400'}"></i>
-                ` : ''}
               </div>
             </div>
           `).join('')}
@@ -3049,7 +4124,7 @@ const app = {
 
         <form onsubmit="app.enviarMensajeDirecto(event)" class="p-2.5 bg-white border-t border-slate-200 flex items-center gap-2">
           <input id="chat-directo-input" type="text" placeholder="Escribe un mensaje a ${isProf ? 'la apoderada' : 'la profesora'}..." class="flex-1 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none focus:border-blue-500">
-          <button type="submit" class="p-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition cursor-pointer shadow-xs">
+          <button type="submit" ${this.isSendingMobileMsg ? 'disabled' : ''} class="p-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition cursor-pointer shadow-xs disabled:opacity-60">
             <i data-lucide="send" class="w-4 h-4"></i>
           </button>
         </form>
@@ -3061,7 +4136,7 @@ const app = {
   // PESTAÑA: GESTIÓN DE ALERTAS
   // -------------------------------------------------------------
   renderAlertasTab() {
-    const isProf = this.currentUser.role === 'profesora';
+    const isProf = this.isMobileTeacherAuthorized();
     return isProf ? this.renderTableroProfesorAlertas() : this.renderBandejaApoderadoAlertas();
   },
 
@@ -3102,7 +4177,13 @@ const app = {
         </div>
 
         <div class="space-y-2.5">
-          ${filtradas.map(a => {
+          ${filtradas.length === 0 ? `
+            <div class="p-6 rounded-2xl bg-white border border-dashed border-slate-300 text-center space-y-1.5">
+              <i data-lucide="bell-off" class="w-6 h-6 text-slate-400 mx-auto"></i>
+              <p class="text-xs font-bold text-slate-600">No tienes alertas registradas (0 alertas)</p>
+              <p class="text-[11px] text-slate-400">Las alertas emitidas por la profesora aparecerán aquí.</p>
+            </div>
+          ` : filtradas.map(a => {
             const esUrgente = a.tipo === 'urgente';
             const yaLeida = a.estado === 'LEIDA' || this.acuseStatus[a.id];
             return `
@@ -3145,7 +4226,7 @@ const app = {
                       <span>Acuse de recibo</span>
                     </button>
                   ` : `
-                    <span class="text-[10px] text-slate-400 font-semibold">Guardado en BD</span>
+                    <span class="text-[10px] text-slate-400 font-semibold">Confirmado</span>
                   `}
                 </div>
               </div>
@@ -3187,6 +4268,12 @@ const app = {
           </div>
 
           <form onsubmit="app.emitirAvisoReforzamiento(event)" class="space-y-2">
+            ${this.mobileAlertSuccessMsg ? `
+              <div class="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-bold flex items-center gap-1.5">
+                <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600 flex-shrink-0"></i>
+                <span>${this.mobileAlertSuccessMsg}</span>
+              </div>
+            ` : ''}
             <div>
               <label class="block text-[11px] font-bold text-slate-600 mb-0.5">Tipo de Prioridad</label>
               <select id="aviso-tipo" class="w-full px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 bg-slate-50 focus:outline-none">
@@ -3202,11 +4289,59 @@ const app = {
               <label class="block text-[11px] font-bold text-slate-600 mb-0.5">Descripción para los Apoderados</label>
               <textarea id="aviso-desc" rows="2" class="w-full px-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-800 focus:outline-none focus:border-blue-500">Estimados apoderados: Se solicita reforzar en casa la secuencia de adiciones con material pictórico y las dinámicas rítmicas antes de la evaluación del viernes.</textarea>
             </div>
-            <button type="submit" class="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer">
+            <button type="submit" ${this.isSendingMobileAlert ? 'disabled' : ''} class="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60">
               <i data-lucide="send" class="w-3.5 h-3.5"></i>
-              <span>Emitir Alerta y Solicitar Acuse de Recibo</span>
+              <span>${this.isSendingMobileAlert ? 'Enviando...' : 'Emitir Alerta y Solicitar Acuse de Recibo'}</span>
             </button>
           </form>
+        </div>
+
+        <div class="space-y-1.5">
+          <div class="flex items-center justify-between px-1">
+            <span class="block text-[11px] font-black uppercase tracking-wider text-slate-500">
+              Historial de Alertas Emitidas (${(this.alertasLocales || []).length})
+            </span>
+            ${(this.alertasLocales || []).length > 0 ? `
+              <button
+                type="button"
+                onclick="app.vaciarAlertasMovil()"
+                class="px-2 py-0.5 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-black cursor-pointer"
+              >
+                Vaciar Historial
+              </button>
+            ` : ''}
+          </div>
+
+          ${(this.alertasLocales || []).length === 0 ? `
+            <div class="p-4 rounded-2xl bg-white border border-dashed border-slate-300 text-center text-xs text-slate-500 font-semibold">
+              No hay alertas emitidas registradas todavía.
+            </div>
+          ` : `
+            <div class="space-y-2">
+              ${(this.alertasLocales || []).map(al => {
+                const isRead = al.estado === 'LEIDA' || Boolean(this.acuseStatus[al.id]);
+                return `
+                  <div class="p-3 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-1.5">
+                    <div class="flex items-center justify-between gap-2">
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${al.tipo === 'urgente' ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'}">
+                        ${al.tipo === 'urgente' ? 'Urgente' : 'Informativa'}
+                      </span>
+                      <span class="text-[10px] text-slate-400 font-bold">${al.fecha_creacion || 'Hoy'}</span>
+                    </div>
+                    <h4 class="font-black text-xs text-slate-900 leading-snug">${al.titulo}</h4>
+                    ${al.contenido ? `<p class="text-[11px] text-slate-600 leading-relaxed">${al.contenido}</p>` : ''}
+                    <div class="pt-1 border-t border-slate-100 flex items-center justify-between text-[10px]">
+                      <span class="text-slate-500 font-semibold">${al.alumno || '1° Básico B'}</span>
+                      <span class="inline-flex items-center gap-1 font-black ${isRead ? 'text-emerald-700' : 'text-amber-700'}">
+                        <i data-lucide="${isRead ? 'check-circle-2' : 'clock'}" class="w-3 h-3"></i>
+                        <span>${isRead ? 'Confirmada por Apoderado' : 'Pendiente de Lectura'}</span>
+                      </span>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `}
         </div>
 
         <div class="space-y-1.5">
@@ -3240,47 +4375,47 @@ const app = {
   },
 
   // -------------------------------------------------------------
-  // PESTAÑA: PANEL DASHBOARD (Apoderado)
+  // PESTAÑA: PANEL DASHBOARD (Apoderado - Puntajes del 1 al 10)
   // -------------------------------------------------------------
   renderDashboardTab() {
     const pupilName = this.selectedPupilIndex === 0 ? 'Mateo González' : 'Sofía González';
     const pupilCourse = this.selectedPupilIndex === 0 ? '1° Básico B' : '2° Básico A';
 
     const data = this.reporteriaData || {
-      overall_grade: this.selectedPupilIndex === 0 ? 6.5 : 5.5,
-      math_grade: this.selectedPupilIndex === 0 ? 6.2 : 5.5,
-      math_status: 'Muy Bien',
-      math_tasks: '2 actividades',
-      language_grade: this.selectedPupilIndex === 0 ? 6.8 : 6.5,
-      language_status: 'Excelente',
-      language_tasks: '2 actividades',
-      pending_count: 2,
-      completed_activities_month: 9,
-      completion_rate: 75,
-      next_pending_task: {
-        titulo: 'Misión Conteo Mágico: Cuenta del 1 al 10 con Robot Leo',
-        asignatura: 'Matemáticas',
-        estado: 'Pendiente'
-      }
+      overall_grade: 0,
+      math_grade: 0,
+      math_status: 'Sin entregas',
+      math_tasks: '0 actividades',
+      language_grade: 0,
+      language_status: 'Sin entregas',
+      language_tasks: '0 actividades',
+      pending_count: 0,
+      completed_activities_month: 0,
+      completion_rate: 0,
+      actividades: [],
+      next_pending_task: null
     };
 
-    const overall = data.overall_grade || 6.5;
+    const overall = data.overall_grade !== undefined && data.overall_grade !== null ? Number(data.overall_grade) : 0;
+    const mathScore = data.math_grade !== undefined && data.math_grade !== null ? Number(data.math_grade) : 0;
+    const langScore = data.language_grade !== undefined && data.language_grade !== null ? Number(data.language_grade) : 0;
+    const assignedActivities = Array.isArray(data.actividades) ? data.actividades : [];
 
     return `
       <div class="space-y-3">
         <div class="p-4 rounded-2xl bg-gradient-to-r from-indigo-700 via-indigo-600 to-blue-600 text-white shadow-xs space-y-2">
           <div class="flex items-center justify-between">
-            <span class="text-[10px] font-black uppercase tracking-wider text-indigo-200">Panel Académico del Pupilo</span>
+            <span class="text-[10px] font-black uppercase tracking-wider text-indigo-200">Panel de Puntajes del Pupilo</span>
             <span class="px-2 py-0.5 rounded-full bg-white/20 text-white text-[11px] font-black">${pupilCourse}</span>
           </div>
           <div class="flex items-center justify-between">
             <div>
               <h3 class="text-lg font-black text-white">${pupilName}</h3>
-              <p class="text-xs text-indigo-100">Progreso pedagógico oficial sincronizado con MySQL</p>
+              <p class="text-xs text-indigo-100">Puntajes en escala del 1 al 10 (exclusivo Apoderado)</p>
             </div>
             <div class="text-right">
-              <span class="text-2xl font-black text-amber-300">${overall.toFixed ? overall.toFixed(1) : overall}</span>
-              <span class="block text-[10px] font-bold text-indigo-200">Promedio General</span>
+              <span class="text-2xl font-black text-amber-300">${overall.toFixed ? overall.toFixed(1) : overall} <span class="text-xs text-indigo-200">/ 10</span></span>
+              <span class="block text-[10px] font-bold text-indigo-200">Puntaje Promedio</span>
             </div>
           </div>
         </div>
@@ -3291,12 +4426,12 @@ const app = {
               <span class="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-black">
                 <i data-lucide="calculator" class="w-4 h-4"></i>
               </span>
-              <span class="text-lg font-black text-blue-700">${data.math_grade || 6.2}</span>
+              <span class="text-lg font-black text-blue-700">${mathScore} <span class="text-[10px] text-slate-400">/ 10</span></span>
             </div>
             <div>
               <h4 class="font-black text-xs text-slate-900">Matemáticas</h4>
-              <p class="text-[11px] text-emerald-600 font-bold">${data.math_status || 'Muy Bien'}</p>
-              <p class="text-[10px] text-slate-400 mt-0.5">${data.math_tasks || '2 actividades'}</p>
+              <p class="text-[11px] text-emerald-600 font-bold">Puntaje: ${data.math_status || 'Excelente'}</p>
+              <p class="text-[10px] text-slate-400 mt-0.5">${data.math_tasks || 'Al día'}</p>
             </div>
           </div>
 
@@ -3305,14 +4440,49 @@ const app = {
               <span class="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-black">
                 <i data-lucide="book-open" class="w-4 h-4"></i>
               </span>
-              <span class="text-lg font-black text-purple-700">${data.language_grade || 6.8}</span>
+              <span class="text-lg font-black text-purple-700">${langScore} <span class="text-[10px] text-slate-400">/ 10</span></span>
             </div>
             <div>
               <h4 class="font-black text-xs text-slate-900">Lenguaje</h4>
-              <p class="text-[11px] text-emerald-600 font-bold">${data.language_status || 'Excelente'}</p>
-              <p class="text-[10px] text-slate-400 mt-0.5">${data.language_tasks || '2 actividades'}</p>
+              <p class="text-[11px] text-emerald-600 font-bold">Puntaje: ${data.language_status || 'Excelente'}</p>
+              <p class="text-[10px] text-slate-400 mt-0.5">${data.language_tasks || 'Al día'}</p>
             </div>
           </div>
+        </div>
+
+        <div class="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-2.5">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-black text-slate-900">Puntajes por Actividad (1 al 10)</span>
+            <span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">Escala 1 a 10 pts</span>
+          </div>
+          ${assignedActivities.length === 0 ? `
+            <p class="text-xs text-slate-500 py-2">No hay actividades asignadas en este momento.</p>
+          ` : `
+            <div class="divide-y divide-slate-100">
+              ${assignedActivities.map(act => {
+                const isDone = act.estado === 'Entregada';
+                const hasScore = act.calificacion !== null && act.calificacion !== undefined;
+                const scoreVal = hasScore ? Math.round(Number(act.calificacion)) : (isDone ? 10 : null);
+                return `
+                  <div class="py-2 flex items-center justify-between gap-2 text-xs">
+                    <div class="min-w-0">
+                      <span class="font-black text-slate-800 block truncate">${act.titulo}</span>
+                      <span class="text-[10px] text-slate-500">${act.asignatura} • ${act.estado}</span>
+                    </div>
+                    <div class="flex-shrink-0 text-right">
+                      ${scoreVal !== null ? `
+                        <span class="px-2.5 py-1 rounded-xl font-black text-xs ${scoreVal >= 9 ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : (scoreVal >= 7 ? 'bg-blue-100 text-blue-800 border border-blue-300' : 'bg-amber-100 text-amber-900 border border-amber-300')}">
+                          ${scoreVal} / 10 pts
+                        </span>
+                      ` : `
+                        <span class="text-[11px] font-bold text-slate-400">Pendiente</span>
+                      `}
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `}
         </div>
 
         <div class="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-2">
@@ -3321,14 +4491,14 @@ const app = {
               <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600"></i>
               <span>Cumplimiento de Tareas</span>
             </div>
-            <span class="text-xs font-black text-emerald-700">${data.completion_rate || 50}%</span>
+            <span class="text-xs font-black text-emerald-700">${data.completion_rate !== undefined ? data.completion_rate : 0}%</span>
           </div>
           <div class="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
-            <div class="h-full bg-emerald-500 rounded-full transition-all duration-500" style="width: ${data.completion_rate || 50}%"></div>
+            <div class="h-full bg-emerald-500 rounded-full transition-all duration-500" style="width: ${data.completion_rate !== undefined ? data.completion_rate : 0}%"></div>
           </div>
           <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1">
-            <span>Pendientes: <strong class="text-rose-600">${data.pending_count || 2}</strong></span>
-            <span>Completadas: <strong class="text-emerald-600">${data.completed_activities_month || 9}</strong></span>
+            <span>Pendientes: <strong class="text-rose-600">${data.pending_count || 0}</strong></span>
+            <span>Completadas: <strong class="text-emerald-600">${data.completed_activities_month !== undefined ? data.completed_activities_month : 0}</strong></span>
           </div>
         </div>
 
@@ -3348,103 +4518,430 @@ const app = {
   // -------------------------------------------------------------
   renderConfigTab() {
     const isOnline = window.mobileApi && mobileApi.isOnline;
-    const currentHost = window.mobileApi ? mobileApi.getServerHostUrl() : 'http://192.168.1.113:8000';
+    const canEditPhoto = this.canEditProfilePhoto();
+    const avatarUrl = canEditPhoto ? this.getUserAvatarUrl(this.currentUser) : '';
+    const defaultUrl = canEditPhoto ? this.getDefaultAvatarUrl(this.currentUser) : '';
+
     return `
       <div class="space-y-3">
+        ${canEditPhoto ? `
+          <div class="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-3">
+            <div class="flex items-center gap-3">
+              <img
+                src="${avatarUrl}"
+                alt="${this.currentUser.name}"
+                onerror="this.src='${defaultUrl}'"
+                class="w-14 h-14 rounded-2xl object-cover border-2 border-slate-200 shadow-xs flex-shrink-0"
+              />
+              <div class="min-w-0 flex-1">
+                <h3 class="font-black text-sm text-slate-900 truncate">${this.currentUser.name}</h3>
+                <p class="text-xs text-slate-500">${this.currentUser.rolLabel || 'Perfil Institucional'}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onclick="app.openMobilePhotoModal()"
+              class="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+            >
+              <i data-lucide="camera" class="w-4 h-4"></i>
+              <span>Cambiar Foto de Perfil</span>
+            </button>
+          </div>
+        ` : ''}
+
         <div class="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-3">
-          <div class="flex items-center gap-2">
-            <div class="w-8 h-8 rounded-xl bg-slate-900 text-white flex items-center justify-center">
-              <i data-lucide="server" class="w-4 h-4"></i>
+          <div class="flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center">
+              <i data-lucide="shield-check" class="w-5 h-5"></i>
             </div>
             <div>
-              <h3 class="font-black text-sm text-slate-900">Configuración de Conexión LAN</h3>
-              <p class="text-xs text-slate-500">Selecciona un acceso directo o ingresa la URL base del servidor.</p>
+              <h3 class="font-black text-sm text-slate-900">Estado de la Plataforma</h3>
+              <p class="text-xs text-slate-500">Sincronización en la nube y seguridad de sesión.</p>
             </div>
           </div>
 
-          <div class="grid grid-cols-1 gap-2">
-            <button 
-              type="button" 
-              onclick="app.selectHostPreset('http://192.168.1.113:8000')" 
-              class="w-full text-left p-2.5 rounded-xl border-2 border-emerald-500/50 bg-emerald-50/80 hover:bg-emerald-100 transition flex items-center justify-between cursor-pointer"
-            >
-              <div>
-                <div class="font-black text-xs text-emerald-950 flex items-center gap-1.5">
-                  <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-                  <span>192.168.1.113:8000</span>
-                  <span class="px-1.5 py-0.5 rounded-md bg-emerald-200 text-emerald-950 text-[10px] font-black">Tu PC Wi-Fi</span>
-                </div>
-                <p class="text-[10px] text-emerald-800 font-medium">Recomendado para Celular Físico en tu red</p>
-              </div>
-              <i data-lucide="arrow-right" class="w-4 h-4 text-emerald-700"></i>
-            </button>
+          <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+            <span class="font-bold text-slate-700">Estado de sincronización:</span>
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black ${isOnline ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
+              <span class="w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-amber-500'}"></span>
+              ${isOnline ? 'Conectado en la Nube' : 'Modo Respaldo Local'}
+            </span>
+          </div>
 
-            <button 
-              type="button" 
-              onclick="app.selectHostPreset('http://10.0.2.2:8000')" 
-              class="w-full text-left p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 transition flex items-center justify-between cursor-pointer"
-            >
-              <div>
-                <div class="font-bold text-xs text-slate-800 flex items-center gap-1.5">
-                  <span>10.0.2.2:8000</span>
-                  <span class="px-1.5 py-0.5 rounded-md bg-slate-200 text-slate-700 text-[10px] font-bold">Emulador</span>
-                </div>
-                <p class="text-[10px] text-slate-500 font-medium">Para Emulador oficial de Android Studio</p>
-              </div>
-              <i data-lucide="arrow-right" class="w-4 h-4 text-slate-400"></i>
+          <div class="pt-1">
+            <button type="button" onclick="app.logout()" class="w-full py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer">
+              <i data-lucide="log-out" class="w-4 h-4"></i>
+              <span>Cerrar Sesión Institucional</span>
             </button>
+          </div>
+        </div>
+      </div>
+    `;
+  },
 
-            <button 
-              type="button" 
-              onclick="app.selectHostPreset('http://127.0.0.1:8000')" 
-              class="w-full text-left p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 transition flex items-center justify-between cursor-pointer"
-            >
-              <div>
-                <div class="font-bold text-xs text-slate-800 flex items-center gap-1.5">
-                  <span>127.0.0.1:8000</span>
-                  <span class="px-1.5 py-0.5 rounded-md bg-slate-200 text-slate-700 text-[10px] font-bold">Navegador PC</span>
-                </div>
-                <p class="text-[10px] text-slate-500 font-medium">Solo para pruebas en el navegador web de tu PC</p>
+  renderMobilePhotoModal() {
+    if (!this.canEditProfilePhoto()) return '';
+    const avatarUrl = this.getUserAvatarUrl(this.currentUser);
+    const defaultUrl = this.getDefaultAvatarUrl(this.currentUser);
+    const isUsingCustom = avatarUrl !== defaultUrl;
+    const currentUrlInput = /^https?:\/\//i.test(avatarUrl) && avatarUrl !== defaultUrl ? avatarUrl : '';
+
+    return `
+      <div
+        id="mobile-photo-modal-backdrop"
+        onclick="if (event.target.id === 'mobile-photo-modal-backdrop') app.closeMobilePhotoModal()"
+        class="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+      >
+        <div class="w-full max-w-md rounded-3xl bg-white text-slate-900 p-5 shadow-2xl border border-slate-200 space-y-4 my-auto">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div class="flex items-center gap-2">
+              <div class="w-9 h-9 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center">
+                <i data-lucide="camera" class="w-5 h-5"></i>
               </div>
-              <i data-lucide="arrow-right" class="w-4 h-4 text-slate-400"></i>
+              <div>
+                <h3 class="font-black text-sm text-slate-900">Foto de Perfil</h3>
+                <p class="text-[11px] text-slate-500">${this.currentUser.name}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onclick="app.closeMobilePhotoModal()"
+              class="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center cursor-pointer"
+            >
+              <i data-lucide="x" class="w-4 h-4"></i>
             </button>
           </div>
 
-          <div class="space-y-2.5 pt-1 border-t border-slate-100">
-            <div>
-              <label class="block text-xs font-bold text-slate-700 mb-1">URL Base del Servidor</label>
-              <input id="cfg-api-url-tab" type="text" value="${currentHost}" placeholder="http://192.168.1.113:8000" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-xs font-mono text-slate-900 focus:outline-none focus:border-blue-500">
-              <p class="text-[10px] text-slate-500 mt-1">El puerto siempre es <strong>8000</strong>.</p>
+          <div class="flex items-center gap-4 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+            <img
+              src="${avatarUrl}"
+              alt="${this.currentUser.name}"
+              onerror="this.src='${defaultUrl}'"
+              class="w-16 h-16 rounded-2xl object-cover border-2 border-white shadow-md flex-shrink-0"
+            />
+            <div class="space-y-1">
+              <p class="text-xs font-black text-slate-800">${isUsingCustom ? 'Foto personalizada activa' : 'Usando foto por defecto'}</p>
+              <p class="text-[11px] text-slate-500 leading-snug">Puedes subir una imagen desde tu dispositivo, pegar un enlace o restaurar tu foto original.</p>
+            </div>
+          </div>
+
+          ${this.photoModalError ? `
+            <div class="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold">
+              ${this.photoModalError}
+            </div>
+          ` : ''}
+
+          ${this.photoModalStatus ? `
+            <div class="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold">
+              ${this.photoModalStatus}
+            </div>
+          ` : ''}
+
+          <div class="space-y-3">
+            <label class="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs shadow-sm transition flex items-center justify-center gap-2 cursor-pointer active:scale-95">
+              <i data-lucide="upload" class="w-4 h-4"></i>
+              <span>Elegir foto desde galería o archivo</span>
+              <input
+                type="file"
+                accept="image/*"
+                class="hidden"
+                onchange="app.handleMobilePhotoFile(this)"
+              />
+            </label>
+
+            <div class="space-y-1.5">
+              <label class="text-[11px] font-bold text-slate-600">O usar enlace de imagen (URL):</label>
+              <div class="flex gap-2">
+                <input
+                  id="mobile-photo-url-input"
+                  type="url"
+                  value="${currentUrlInput}"
+                  placeholder="https://ejemplo.com/mi-foto.jpg"
+                  class="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  type="button"
+                  onclick="app.saveMobilePhotoUrl()"
+                  class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs cursor-pointer"
+                >
+                  Guardar
+                </button>
+              </div>
             </div>
 
-            ${this.testServerConnectionMessage ? `
-              <div class="p-3 rounded-xl text-xs font-black flex items-center gap-2 border ${
-                this.testServerConnectionStatus === 'success'
-                  ? 'bg-emerald-100 text-emerald-900 border-emerald-400'
-                  : (this.testServerConnectionStatus === 'error'
-                    ? 'bg-rose-100 text-rose-900 border-rose-400'
-                    : 'bg-blue-50 text-blue-900 border-blue-300')
-              }">
-                <i data-lucide="${this.testServerConnectionStatus === 'success' ? 'check-circle-2' : (this.testServerConnectionStatus === 'error' ? 'x-circle' : 'loader')}" class="w-4 h-4 flex-shrink-0"></i>
-                <span>${this.testServerConnectionMessage}</span>
-              </div>
+            ${isUsingCustom ? `
+              <button
+                type="button"
+                onclick="app.restoreDefaultMobilePhoto()"
+                class="w-full py-2.5 px-4 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 font-black text-xs border border-amber-300 transition flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                <span>Restaurar Foto por Defecto</span>
+              </button>
             ` : ''}
+          </div>
+        </div>
+      </div>
+    `;
+  },
 
-            <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">
-              <span class="font-bold text-slate-700">Estado actual:</span>
-              <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black ${isOnline ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
-                <span class="w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-amber-500'}"></span>
-                ${isOnline ? 'Conectado al Backend' : 'Modo Offline / Caché'}
+  renderServerModal() {
+    return '';
+  },
+
+  renderModalRevisionDocenteMovil() {
+    if (!this.isMobileTeacherAuthorized() || !this.activeTeacherReview) return '';
+    const rev = this.activeTeacherReview;
+    const detalles = Array.isArray(rev.detalle_respuestas) ? rev.detalle_respuestas : [];
+    const ia = rev.resumen_ia || {};
+    const puntajeVal = rev.calificacion !== null && rev.calificacion !== undefined ? Math.round(Number(rev.calificacion)) : 10;
+    const draftMsg = this.teacherReviewMessageDraft !== undefined
+      ? this.teacherReviewMessageDraft
+      : (ia.mensaje_apoderado || `Hola Carolina, te comparto el resumen de la actividad "${rev.titulo}" de ${rev.alumno_nombre || 'Mateo'} (Puntaje: ${puntajeVal}/10 pts).`);
+
+    const alumnosCompletados = Array.isArray(rev.alumnos_completados) ? rev.alumnos_completados : [];
+    const selectedAlumnoId = Number(rev.alumno_id || 5);
+
+    return `
+      <div
+        id="mobile-teacher-review-modal-backdrop"
+        onclick="if (event.target.id === 'mobile-teacher-review-modal-backdrop') app.cerrarRevisionActividadMovil()"
+        class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-2.5 overflow-y-auto"
+      >
+        <div
+          id="mobile-review-modal-body"
+          class="w-full max-w-lg max-h-[92vh] overflow-y-auto rounded-3xl bg-slate-900 text-white p-4 shadow-2xl border-2 border-indigo-500/40 space-y-3.5 my-auto"
+        >
+          <div class="flex items-center justify-between gap-2 flex-wrap border-b border-slate-800 pb-3">
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-indigo-500/30 text-indigo-200 border border-indigo-400/40 flex items-center gap-1">
+                <i data-lucide="sparkles" class="w-3 h-3"></i>
+                <span>Revisión Docente + IA</span>
+              </span>
+              <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-400/20 text-amber-300 border border-amber-400/30">
+                Alumno: ${rev.alumno_nombre || 'Mateo González'}
               </span>
             </div>
-
-            <div class="flex flex-col gap-2 pt-1">
-              <button type="button" onclick="app.testConnection()" class="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer">
-                <i data-lucide="activity" class="w-4 h-4"></i>
-                <span>Probar Conexión</span>
+            <div class="flex items-center gap-1.5">
+              <button
+                type="button"
+                onclick="app.reiniciarPuntajeActividadMovil('${rev.codigo_frontend || 'act-conteo'}')"
+                class="px-2.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-[11px] flex items-center gap-1 cursor-pointer active:scale-95 shadow-xs"
+              >
+                <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+                <span>Reiniciar</span>
               </button>
-              <button type="button" onclick="app.saveServerUrl(event)" class="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs shadow-xs transition cursor-pointer">
-                Guardar URL en Dispositivo
+              <button
+                type="button"
+                onclick="app.cerrarRevisionActividadMovil()"
+                class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-[11px] border border-slate-700 flex items-center gap-1 cursor-pointer active:scale-95"
+              >
+                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                <span>Cerrar</span>
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <span class="text-[11px] font-bold text-amber-300 block">${rev.asignatura || 'Matemáticas'}</span>
+            <h3 class="font-black text-sm text-white leading-snug mt-0.5">${rev.titulo || 'Actividad Escolar'}</h3>
+          </div>
+
+          <!-- Selector de Alumnos que han completado la actividad -->
+          <div class="bg-slate-800/80 rounded-2xl p-3 border border-slate-700/80 space-y-2">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-1.5">
+                <i data-lucide="users" class="w-3.5 h-3.5 text-emerald-400"></i>
+                <span class="text-[11px] font-black uppercase tracking-wider text-slate-200">
+                  Alumnos que han completado la actividad (${alumnosCompletados.length})
+                </span>
+              </div>
+              <span class="text-[10px] text-slate-400 font-medium">Elige alumno</span>
+            </div>
+
+            ${alumnosCompletados.length === 0 ? `
+              <div class="p-2.5 rounded-xl bg-slate-900/70 border border-slate-700/70 text-[11px] text-slate-300 flex items-center justify-between gap-2">
+                <span>Ningún alumno ha completado aún esta actividad. Mostrando vista de <strong>${rev.alumno_nombre || 'Mateo González'}</strong>.</span>
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-400/30 flex-shrink-0">Pendiente</span>
+              </div>
+            ` : `
+              <div class="flex flex-wrap gap-1.5">
+                ${alumnosCompletados.map(al => {
+                  const isSelected = Number(al.alumno_id) === selectedAlumnoId;
+                  const scoreChip = al.calificacion !== null && al.calificacion !== undefined
+                    ? `${Math.round(Number(al.calificacion))}/10 pts`
+                    : 'Completada';
+                  return `
+                    <button
+                      type="button"
+                      onclick="app.seleccionarAlumnoRevisionMovil('${rev.codigo_frontend || 'act-conteo'}', ${al.alumno_id})"
+                      class="px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer border ${
+                        isSelected
+                          ? 'bg-indigo-600 text-white border-indigo-400 shadow-sm'
+                          : 'bg-slate-900/80 text-slate-200 border-slate-700'
+                      }"
+                    >
+                      <span class="w-5 h-5 rounded-full ${isSelected ? 'bg-white text-indigo-700' : 'bg-emerald-500/20 text-emerald-300'} flex items-center justify-center text-[10px] font-black">
+                        ${(al.alumno_nombre || 'A').charAt(0)}
+                      </span>
+                      <span>${al.alumno_nombre}</span>
+                      <span class="px-1.5 py-0.5 rounded-md text-[10px] font-black ${
+                        isSelected ? 'bg-indigo-800 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'
+                      }">
+                        ${scoreChip}
+                      </span>
+                    </button>
+                  `;
+                }).join('')}
+              </div>
+            `}
+          </div>
+
+          <div class="grid grid-cols-3 gap-2">
+            <div class="p-2.5 rounded-xl bg-white/10 border border-white/10 text-center">
+              <span class="block text-[10px] text-slate-300 font-bold uppercase">Puntaje</span>
+              <span class="text-sm font-black text-amber-300">${rev.estado === 'Entregada' || rev.calificacion != null ? `${puntajeVal} / 10 pts` : 'En curso'}</span>
+            </div>
+            <div class="p-2.5 rounded-xl bg-white/10 border border-white/10 text-center">
+              <span class="block text-[10px] text-slate-300 font-bold uppercase">T. Promedio</span>
+              <span class="text-sm font-black text-sky-300">${rev.tiempo_promedio_segundos ? `${rev.tiempo_promedio_segundos}s` : '0.0s'} / núm</span>
+            </div>
+            <div class="p-2.5 rounded-xl bg-white/10 border border-white/10 text-center">
+              <span class="block text-[10px] text-slate-300 font-bold uppercase">Tiempo Total</span>
+              <span class="text-sm font-black text-emerald-300">${rev.tiempo_total_segundos ? `${rev.tiempo_total_segundos}s` : '0.0s'}</span>
+            </div>
+          </div>
+
+          <!-- Desglose de Cómo Respondió y Cuánto Tardó en Cada Número -->
+          <div class="p-3.5 rounded-2xl bg-white text-slate-900 border border-slate-200 shadow-xs space-y-2.5">
+            <div class="flex items-center justify-between">
+              <h4 class="font-black text-xs text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                <i data-lucide="timer" class="w-4 h-4 text-blue-600"></i>
+                <span>Cómo Respondió y Tiempo por Número</span>
+              </h4>
+              <span class="text-[10px] font-bold text-slate-500">${detalles.length} registros</span>
+            </div>
+
+            ${detalles.length === 0 ? `
+              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 font-semibold">
+                El alumno aún no registra respuestas grabadas en esta actividad (Estado: ${rev.estado || 'Pendiente'}).
+              </div>
+            ` : `
+              <div class="space-y-2">
+                ${detalles.map(d => {
+                  const errPrev = Array.isArray(d.errores_previos) ? d.errores_previos : [];
+                  const hasErr = !d.correcto || errPrev.length > 0;
+                  const tSeg = Number(d.tiempo_segundos || 1.5).toFixed(1);
+                  const isSlow = Number(tSeg) >= 3.2;
+                  return `
+                    <div class="p-2.5 rounded-xl border ${
+                      hasErr
+                        ? 'bg-rose-50/70 border-rose-200'
+                        : (isSlow ? 'bg-amber-50/70 border-amber-200' : 'bg-emerald-50/40 border-emerald-200')
+                    } flex items-center justify-between gap-2">
+                      <div class="min-w-0 flex-1 space-y-1">
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                          <span class="font-black text-xs text-slate-900">${d.etiqueta || ('Número ' + d.paso)}</span>
+                          ${hasErr ? `
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-600 text-white">
+                              Se equivocó (${errPrev.join(', ') || 'error'})
+                            </span>
+                          ` : `
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800">
+                              Correcto al 1° intento
+                            </span>
+                          `}
+                        </div>
+                        <p class="text-[11px] text-slate-700 font-semibold mt-0.5 leading-relaxed break-words">
+                          Respuesta: <strong>${d.respondido || d.esperado}</strong>
+                        </p>
+                      </div>
+                      <div class="text-right flex-shrink-0">
+                        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-black ${
+                          hasErr ? 'bg-rose-100 text-rose-900' : (isSlow ? 'bg-amber-200 text-amber-950' : 'bg-slate-900 text-amber-300')
+                        }">
+                          <i data-lucide="clock" class="w-3 h-3"></i>
+                          <span>${tSeg} s</span>
+                        </span>
+                        <span class="block text-[9px] font-bold text-slate-500 mt-0.5">
+                          ${isSlow ? 'Más lento' : 'Fluido'}
+                        </span>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            `}
+          </div>
+
+          <!-- Resumen Pedagógico con IA y Puntos de Mejora + Envío Rápido al Apoderado -->
+          <div class="p-3.5 rounded-2xl bg-indigo-50 text-slate-900 border-2 border-indigo-200 shadow-xs space-y-3">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-1.5">
+                <div class="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center">
+                  <i data-lucide="sparkles" class="w-4 h-4"></i>
+                </div>
+                <div>
+                  <h4 class="font-black text-xs text-indigo-950 uppercase tracking-wider">Resumen con IA y Puntos de Mejora</h4>
+                  <span class="text-[10px] text-indigo-700 font-semibold">Análisis automático de precisión y velocidad por número</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onclick="app.regenerarResumenIaMovil()"
+                class="px-2.5 py-1 rounded-lg bg-white hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-black text-[10px] flex items-center gap-1 cursor-pointer active:scale-95"
+              >
+                <i data-lucide="refresh-cw" class="w-3 h-3"></i>
+                <span>Regenerar IA</span>
+              </button>
+            </div>
+
+            <div class="space-y-2 text-xs">
+              <div class="p-2.5 rounded-xl bg-white border border-emerald-200">
+                <span class="font-black text-[10px] uppercase text-emerald-700 block mb-0.5">Fortalezas Detectadas:</span>
+                <p class="text-slate-700 font-semibold leading-snug">${ia.fortalezas || 'El estudiante completó la secuencia siguiendo las instrucciones auditivas de Robot Leo.'}</p>
+              </div>
+              <div class="p-2.5 rounded-xl bg-white border border-amber-300">
+                <span class="font-black text-[10px] uppercase text-amber-800 block mb-0.5">Puntos de Mejora (IA):</span>
+                <p class="text-slate-800 font-bold leading-snug">${ia.puntos_mejora || 'Practicar la fluidez en los números donde presentó mayor tiempo de respuesta.'}</p>
+              </div>
+            </div>
+
+            <!-- Botón de acceso rápido y mensaje editable para enviar al apoderado como la profesora -->
+            <div class="pt-2 border-t border-indigo-200/80 space-y-2">
+              <label class="block text-[11px] font-black text-indigo-950">
+                Mensaje listo para enviar a ${rev.apoderado_nombre || 'Carolina Tapia'} (como Profesora Marcela Soto):
+              </label>
+              <textarea
+                id="mobile-teacher-ia-msg"
+                rows="4"
+                oninput="app.teacherReviewMessageDraft = this.value"
+                class="w-full rounded-xl border border-indigo-300 bg-white p-2.5 text-xs text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >${draftMsg}</textarea>
+
+              ${this.teacherReviewSentSuccess ? `
+                <div class="p-2.5 rounded-xl bg-emerald-600 text-white text-xs font-black flex items-center justify-between gap-2">
+                  <div class="flex items-center gap-1.5">
+                    <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+                    <span>¡Mensaje enviado al chat del apoderado!</span>
+                  </div>
+                  <button
+                    type="button"
+                    onclick="app.cerrarRevisionActividadMovil(); app.setTab('mensajeria');"
+                    class="px-2.5 py-1 rounded-lg bg-white text-emerald-900 font-black text-[10px] cursor-pointer"
+                  >
+                    Ver en Chat
+                  </button>
+                </div>
+              ` : ''}
+
+              <button
+                type="button"
+                onclick="app.enviarResumenApoderadoMovil()"
+                class="w-full py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white font-black text-xs shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <i data-lucide="send" class="w-4 h-4"></i>
+                <span>Enviar Resumen al Apoderado por Mensaje</span>
               </button>
             </div>
           </div>
@@ -3453,127 +4950,329 @@ const app = {
     `;
   },
 
-  // [REQ-01.2, 01.3, 01.4, 01.5] Modal accesible desde el botón de engranaje en Login
-  renderServerModal() {
-    const currentHost = window.mobileApi ? mobileApi.getServerHostUrl() : 'http://192.168.1.113:8000';
+  renderMobileAssignModalInner() {
+    const templates = Array.isArray(this.studentActivitiesTemplates) ? this.studentActivitiesTemplates : [];
+    const statusMap = {};
+    (this.teacherCatalogStatus || []).forEach(row => {
+      if (row.codigo_frontend) statusMap[row.codigo_frontend] = row;
+    });
+    const selectedSet = new Set(Array.isArray(this.mobileModalSelectedCodes) ? this.mobileModalSelectedCodes : []);
+    const selectedCount = templates.filter(t => selectedSet.has(t.id)).length;
+
     return `
-      <div class="fixed inset-0 bg-slate-950/75 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fadeIn">
-        <div class="bg-white rounded-3xl p-5 max-w-sm w-full space-y-4 shadow-2xl border border-slate-200">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2.5">
-              <div class="w-9 h-9 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-black shadow-xs">
-                <i data-lucide="settings" class="w-5 h-5"></i>
-              </div>
-              <div>
-                <h3 class="font-black text-sm text-slate-900">Configuración de Servidor LAN</h3>
-                <p class="text-[11px] text-slate-500">Conexión con el Backend FastAPI</p>
-              </div>
-            </div>
-            <button onclick="app.showServerModal = false; app.render();" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 cursor-pointer">
-              <i data-lucide="x" class="w-5 h-5"></i>
+      <form
+        id="mobile-assign-activities-form"
+        method="POST"
+        action="#mobile-assign-activities"
+        onsubmit="app.confirmarAsignarSeleccionMovil(event)"
+        class="flex flex-col max-h-[86vh]"
+        novalidate
+      >
+        <div class="p-4 border-b border-slate-200 flex items-start justify-between gap-3 bg-slate-50 rounded-t-3xl">
+          <div class="space-y-0.5">
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-blue-100 text-blue-900">
+              1° Básico B • Mateo González
+            </span>
+            <h2 id="mobile-assign-modal-title" class="text-base font-black text-slate-900">
+              Seleccionar Actividades a Asignar
+            </h2>
+            <p class="text-[11px] text-slate-600">Elige una o más actividades para enviar al dispositivo del alumno.</p>
+          </div>
+          <button
+            type="button"
+            onclick="app.cerrarModalAsignarActividadMovil()"
+            ${this.isMobileAssigning ? 'disabled' : ''}
+            aria-label="Cerrar ventana"
+            class="p-1.5 rounded-xl bg-white border border-slate-200 text-slate-600 cursor-pointer"
+          >
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <div class="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between gap-2 bg-white">
+          <button
+            type="button"
+            onclick="app.seleccionarTodasModalMovil()"
+            class="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-800 border border-blue-200 text-[11px] font-black cursor-pointer"
+          >
+            Seleccionar todas (${templates.length})
+          </button>
+          <button
+            type="button"
+            onclick="app.limpiarSeleccionModalMovil()"
+            class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-bold cursor-pointer"
+          >
+            Limpiar
+          </button>
+        </div>
+
+        <div class="p-4 overflow-y-auto space-y-2.5 flex-1 bg-slate-50/40">
+          <fieldset class="space-y-2">
+            <legend class="sr-only">Actividades disponibles para asignar</legend>
+            ${templates.map((tpl, idx) => {
+              const isChecked = selectedSet.has(tpl.id);
+              const dbRow = statusMap[tpl.id];
+              const isAssigned = Boolean(dbRow && dbRow.asignada);
+              const isMath = (tpl.subject || '').toLowerCase().includes('matem');
+              return `
+                <label
+                  for="mobile-modal-act-${tpl.id}"
+                  class="flex items-start gap-3 p-3 rounded-2xl border-2 cursor-pointer min-h-[44px] ${
+                    isChecked ? 'bg-blue-50/80 border-blue-500' : 'bg-white border-slate-200'
+                  }"
+                >
+                  <input
+                    type="checkbox"
+                    id="mobile-modal-act-${tpl.id}"
+                    name="mobile_activity_codes"
+                    value="${tpl.id}"
+                    ${isChecked ? 'checked' : ''}
+                    ${idx === 0 ? 'autofocus' : ''}
+                    ${this.isMobileAssigning ? 'disabled' : ''}
+                    onchange="app.toggleActividadModalMovil('${tpl.id}', this.checked)"
+                    style="accent-color: #1e3a8a;"
+                    class="w-5 h-5 mt-0.5 rounded flex-shrink-0 cursor-pointer"
+                  >
+                  <div class="min-w-0 flex-1 space-y-1">
+                    <div class="flex items-center justify-between gap-1.5 flex-wrap">
+                      <span class="px-2 py-0.5 rounded-md text-[10px] font-black ${isMath ? 'bg-blue-100 text-blue-900' : 'bg-purple-100 text-purple-900'}">
+                        ${tpl.subject} • ${tpl.oaCode}
+                      </span>
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-black ${isAssigned ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}">
+                        ${isAssigned ? 'Asignada' : 'No asignada'}
+                      </span>
+                    </div>
+                    <span class="block font-black text-xs text-slate-900 leading-snug">${tpl.title}</span>
+                  </div>
+                </label>
+              `;
+            }).join('')}
+          </fieldset>
+
+          <div role="status" aria-live="polite" class="${this.mobileAssignModalError ? 'p-2.5 rounded-xl bg-rose-50 border border-rose-300 text-rose-900 text-xs font-bold flex items-center gap-1.5' : 'hidden'}">
+            <i data-lucide="alert-circle" class="w-4 h-4 text-rose-600 flex-shrink-0"></i>
+            <span>${this.mobileAssignModalError || ''}</span>
+          </div>
+        </div>
+
+        <div class="p-4 border-t border-slate-200 bg-slate-50 rounded-b-3xl flex items-center justify-between gap-2">
+          <span class="text-xs font-bold text-slate-600">${selectedCount} seleccionada(s)</span>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              onclick="app.cerrarModalAsignarActividadMovil()"
+              ${this.isMobileAssigning ? 'disabled' : ''}
+              class="px-3.5 py-2 rounded-xl bg-white border border-slate-300 text-slate-700 font-bold text-xs cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              ${this.isMobileAssigning ? 'disabled' : ''}
+              class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs shadow-sm flex items-center gap-1.5 cursor-pointer"
+            >
+              <i data-lucide="check-circle" class="w-3.5 h-3.5"></i>
+              <span>${this.isMobileAssigning ? 'Asignando...' : `Asignar (${selectedCount})`}</span>
             </button>
           </div>
+        </div>
+      </form>
+    `;
+  },
 
-          <!-- Selector rápido de entornos -->
-          <div class="space-y-1.5">
-            <label class="block text-[11px] font-black uppercase tracking-wider text-slate-500">Accesos Directos (Toca para probar)</label>
-            <div class="grid grid-cols-1 gap-2">
-              <button 
-                type="button" 
-                onclick="app.selectHostPreset('http://192.168.1.113:8000')" 
-                class="w-full text-left p-2.5 rounded-xl border-2 border-emerald-500/50 bg-emerald-50/80 hover:bg-emerald-100 transition flex items-center justify-between cursor-pointer"
-              >
-                <div>
-                  <div class="font-black text-xs text-emerald-950 flex items-center gap-1.5">
-                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-                    <span>192.168.1.113:8000</span>
-                    <span class="px-1.5 py-0.5 rounded-md bg-emerald-200 text-emerald-950 text-[10px] font-black">Tu PC Wi-Fi</span>
-                  </div>
-                  <p class="text-[10px] text-emerald-800 font-medium">Recomendado para Celular Físico en tu red</p>
-                </div>
-                <i data-lucide="arrow-right" class="w-4 h-4 text-emerald-700"></i>
-              </button>
+  renderModalAsignarActividadMovil() {
+    if (!this.isMobileTeacherAuthorized() || !this.isMobileAssignModalOpen) return '';
+    return `
+      <dialog
+        id="mobile-assign-activities-dialog"
+        aria-labelledby="mobile-assign-modal-title"
+        closedby="any"
+        class="w-[calc(100%-1.5rem)] max-w-md rounded-3xl p-0 bg-white text-slate-900 shadow-2xl border border-slate-200 m-auto"
+      >
+        <div id="mobile-assign-modal-body">
+          ${this.renderMobileAssignModalInner()}
+        </div>
+      </dialog>
+    `;
+  },
 
-              <button 
-                type="button" 
-                onclick="app.selectHostPreset('http://10.0.2.2:8000')" 
-                class="w-full text-left p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 transition flex items-center justify-between cursor-pointer"
-              >
-                <div>
-                  <div class="font-bold text-xs text-slate-800 flex items-center gap-1.5">
-                    <span>10.0.2.2:8000</span>
-                    <span class="px-1.5 py-0.5 rounded-md bg-slate-200 text-slate-700 text-[10px] font-bold">Emulador</span>
-                  </div>
-                  <p class="text-[10px] text-slate-500 font-medium">Para Emulador oficial de Android Studio</p>
-                </div>
-                <i data-lucide="arrow-right" class="w-4 h-4 text-slate-400"></i>
-              </button>
+  renderAsignarTab() {
+    const templates = (Array.isArray(this.studentActivitiesTemplates) && this.studentActivitiesTemplates.length > 0)
+      ? this.studentActivitiesTemplates
+      : [];
+    const statusMap = {};
+    (this.teacherCatalogStatus || []).forEach(row => {
+      if (row.codigo_frontend) {
+        statusMap[row.codigo_frontend] = row;
+      }
+    });
 
-              <button 
-                type="button" 
-                onclick="app.selectHostPreset('http://127.0.0.1:8000')" 
-                class="w-full text-left p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 transition flex items-center justify-between cursor-pointer"
-              >
-                <div>
-                  <div class="font-bold text-xs text-slate-800 flex items-center gap-1.5">
-                    <span>127.0.0.1:8000</span>
-                    <span class="px-1.5 py-0.5 rounded-md bg-slate-200 text-slate-700 text-[10px] font-bold">Navegador PC</span>
-                  </div>
-                  <p class="text-[10px] text-slate-500 font-medium">Solo para pruebas en el navegador web de tu PC</p>
-                </div>
-                <i data-lucide="arrow-right" class="w-4 h-4 text-slate-400"></i>
-              </button>
-            </div>
-          </div>
+    const assignedCount = templates.filter(t => statusMap[t.id] && statusMap[t.id].asignada).length;
 
-          <div class="space-y-3 pt-1 border-t border-slate-100">
+    return `
+      <div class="space-y-3">
+        ${this.activeTeacherReview ? this.renderModalRevisionDocenteMovil() : ''}
+        ${this.isMobileAssignModalOpen ? this.renderModalAsignarActividadMovil() : ''}
+        <div class="p-4 rounded-2xl bg-slate-900 text-white shadow-sm space-y-3">
+          <div class="flex items-center justify-between gap-2">
             <div>
-              <label class="block text-xs font-bold text-slate-700 mb-1">URL Personalizada</label>
-              <input id="cfg-api-url-modal" type="text" value="${currentHost}" placeholder="http://192.168.1.113:8000" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-mono text-slate-900 focus:outline-none focus:border-amber-400">
-              <span class="text-[10px] text-slate-500 block mt-1">El puerto siempre es <strong>8000</strong>.</span>
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-400/20 text-amber-300 border border-amber-400/30">
+                1° Básico B • Mateo González
+              </span>
+              <h3 class="font-black text-sm text-white mt-1">Asignar y Revisar Actividades</h3>
+              <p class="text-[11px] text-slate-300">Asigna actividades una a una, revisa cuánto tardó en cada número y envía el resumen IA al apoderado.</p>
             </div>
-
-            ${this.testServerConnectionMessage ? `
-              <div class="p-3 rounded-xl text-xs font-black flex items-center gap-2 border ${
-                this.testServerConnectionStatus === 'success'
-                  ? 'bg-emerald-100 text-emerald-900 border-emerald-400'
-                  : (this.testServerConnectionStatus === 'error'
-                    ? 'bg-rose-100 text-rose-900 border-rose-400'
-                    : 'bg-blue-50 text-blue-900 border-blue-300')
-              }">
-                <i data-lucide="${this.testServerConnectionStatus === 'success' ? 'check-circle-2' : (this.testServerConnectionStatus === 'error' ? 'x-circle' : 'loader')}" class="w-4 h-4 flex-shrink-0"></i>
-                <span class="leading-tight">${this.testServerConnectionMessage}</span>
-              </div>
-            ` : ''}
-
-            <div class="pt-1 flex flex-col gap-2">
-              <button type="button" onclick="app.testConnection()" class="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-98 text-white font-black text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm">
-                <i data-lucide="activity" class="w-4 h-4"></i>
-                <span>Probar Conexión</span>
-              </button>
-              <div class="flex items-center gap-2">
-                <button type="button" onclick="app.saveServerUrl(event)" class="flex-1 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs transition cursor-pointer">
-                  Guardar URL
-                </button>
-                <button type="button" onclick="app.showServerModal = false; app.render();" class="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer">
-                  Cerrar
-                </button>
-              </div>
+            <div class="text-right flex-shrink-0">
+              <span class="block text-lg font-black text-amber-400 leading-none">${assignedCount}/${templates.length}</span>
+              <span class="text-[10px] text-slate-400 font-bold">Asignadas</span>
             </div>
           </div>
+
+          <div class="space-y-2 pt-1">
+            <button
+              type="button"
+              onclick="app.abrirModalAsignarActividadMovil()"
+              class="w-full py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs transition flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer shadow-sm"
+            >
+              <i data-lucide="check-circle" class="w-4 h-4"></i>
+              <span>Asignar actividad</span>
+            </button>
+            <div class="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onclick="app.vaciarActividadesMovil()"
+                class="py-2 px-3 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/40 text-rose-200 font-black text-[11px] transition flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
+              >
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                <span>Vaciar Bandeja</span>
+              </button>
+              <button
+                type="button"
+                onclick="app.asignarTodasActividadesMovil()"
+                class="py-2 px-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-[11px] transition flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
+              >
+                <i data-lucide="check-check" class="w-3.5 h-3.5"></i>
+                <span>Asignar Todas</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-2.5">
+          ${templates.map(tpl => {
+            const dbRow = statusMap[tpl.id];
+            const isAssigned = Boolean(dbRow && dbRow.asignada);
+            const studentState = (dbRow && dbRow.estado_alumno) ? dbRow.estado_alumno : 'Sin asignar';
+            const studentScore = (dbRow && dbRow.calificacion_alumno !== null && dbRow.calificacion_alumno !== undefined)
+              ? Math.round(Number(dbRow.calificacion_alumno))
+              : null;
+            const rawComment = (dbRow && dbRow.comentarios_alumno) ? String(dbRow.comentarios_alumno) : '';
+            const hasMistakes = rawComment.includes('Se equivocó en:');
+            const mistakeDetail = hasMistakes ? rawComment.substring(rawComment.indexOf('Se equivocó en:')) : '';
+            const isMath = (tpl.subject || '').toLowerCase().includes('matem');
+
+            return `
+              <div class="p-3.5 rounded-2xl bg-white border-2 ${isAssigned ? 'border-emerald-500/60 bg-emerald-50/20' : 'border-slate-200'} shadow-xs space-y-2.5">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="space-y-1 min-w-0">
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                      <span class="px-2 py-0.5 rounded-md text-[10px] font-black ${isMath ? 'bg-blue-100 text-blue-900' : 'bg-purple-100 text-purple-900'}">
+                        ${tpl.subject}
+                      </span>
+                      <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700">
+                        ${tpl.oaCode}
+                      </span>
+                      ${studentScore !== null ? `
+                        <span class="px-2 py-0.5 rounded-md text-[10px] font-black bg-indigo-100 text-indigo-900 border border-indigo-200">
+                          Puntaje: ${studentScore} / 10 pts
+                        </span>
+                      ` : ''}
+                    </div>
+                    <h4 class="font-black text-xs text-slate-900 leading-snug">${tpl.title}</h4>
+                  </div>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] font-black flex-shrink-0 ${
+                    isAssigned
+                      ? (studentState === 'Entregada' ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-amber-100 text-amber-900 border border-amber-300')
+                      : 'bg-slate-100 text-slate-500 border border-slate-200'
+                  }">
+                    ${isAssigned ? (studentState === 'Entregada' ? 'Completada' : 'Asignada') : 'No asignada'}
+                  </span>
+                </div>
+
+                ${isAssigned && (hasMistakes || studentState === 'Entregada') ? `
+                  <div class="p-2.5 rounded-xl text-[11px] font-bold border ${
+                    hasMistakes
+                      ? 'bg-rose-50 text-rose-900 border-rose-200'
+                      : 'bg-emerald-50 text-emerald-900 border-emerald-200'
+                  } flex items-start gap-1.5">
+                    <i data-lucide="${hasMistakes ? 'alert-triangle' : 'check-circle-2'}" class="w-4 h-4 flex-shrink-0 mt-0.5 ${hasMistakes ? 'text-rose-600' : 'text-emerald-600'}"></i>
+                    <div>
+                      <span class="block font-black uppercase text-[10px] ${hasMistakes ? 'text-rose-700' : 'text-emerald-700'}">Diagnóstico Docente (Exclusivo Profesora):</span>
+                      <span>${hasMistakes ? mistakeDetail : 'Secuencia completada sin errores en ningún número (10/10 pts).'}</span>
+                    </div>
+                  </div>
+                ` : ''}
+
+                <div class="flex flex-wrap items-center justify-end gap-2 pt-1 border-t border-slate-100">
+                  ${isAssigned ? `
+                    <button
+                      type="button"
+                      onclick="app.abrirRevisionActividadMovil('${tpl.id}')"
+                      class="w-full py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs transition flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer shadow-xs"
+                    >
+                      <i data-lucide="sparkles" class="w-4 h-4"></i>
+                      <span>Revisar Respuestas, Tiempos y Resumen IA</span>
+                    </button>
+                    <button
+                      type="button"
+                      onclick="app.reiniciarPuntajeActividadMovil('${tpl.id}')"
+                      class="px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-[11px] transition flex items-center gap-1 active:scale-95 cursor-pointer shadow-xs"
+                    >
+                      <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+                      <span>Reiniciar Puntaje</span>
+                    </button>
+                    <button
+                      type="button"
+                      onclick="app.desasignarActividadMovil('${tpl.id}')"
+                      class="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-[11px] transition flex items-center gap-1 active:scale-95 cursor-pointer"
+                    >
+                      <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                      <span>Quitar</span>
+                    </button>
+                  ` : `
+                    <button
+                      type="button"
+                      onclick="app.asignarActividadMovil('${tpl.id}')"
+                      class="w-full py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs transition flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer shadow-xs"
+                    >
+                      <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                      <span>Asignar a Mateo</span>
+                    </button>
+                  `}
+                </div>
+              </div>
+            `;
+          }).join('')}
         </div>
       </div>
     `;
   },
 
   renderBottomNavigation() {
-    const isProf = this.currentUser.role === 'profesora';
+    const isProf = this.currentUser.role === 'profesora' || this.currentUser.role === 'admin';
     return `
       <nav class="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 px-4 py-2 flex items-center justify-around z-30 shadow-lg">
         <button onclick="app.setTab('mensajeria')" class="flex flex-col items-center gap-1 transition ${this.currentTab === 'mensajeria' ? 'text-blue-600 font-black' : 'text-slate-400 hover:text-slate-600 font-bold'}">
           <i data-lucide="message-square" class="w-5 h-5"></i>
           <span class="text-[10px]">Mensajería</span>
         </button>
+
+        ${isProf ? `
+          <button onclick="app.setTab('asignar')" class="flex flex-col items-center gap-1 transition ${this.currentTab === 'asignar' ? 'text-amber-600 font-black' : 'text-slate-400 hover:text-slate-600 font-bold'}">
+            <i data-lucide="list-ordered" class="w-5 h-5"></i>
+            <span class="text-[10px]">Asignar</span>
+          </button>
+        ` : ''}
 
         <button onclick="app.setTab('alertas')" class="flex flex-col items-center gap-1 transition ${this.currentTab === 'alertas' ? 'text-rose-600 font-black' : 'text-slate-400 hover:text-slate-600 font-bold'}">
           <div class="relative">

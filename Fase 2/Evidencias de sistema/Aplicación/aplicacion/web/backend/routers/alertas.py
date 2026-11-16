@@ -46,4 +46,20 @@ def crear_alerta(alerta: NotificacionCreate):
         VALUES (%s, %s, %s, %s, %s, 'PENDIENTE')
     """
     result = execute_query(query, (alerta.usuario_id, alerta.tipo, alerta.titulo, alerta.contenido, ahora), commit=True)
-    return {"message": "Alerta creada exitosamente", "alerta_id": result["last_id"]}
+    return {
+        "success": True,
+        "message": "Alerta creada exitosamente",
+        "alerta_id": result["last_id"],
+        "usuario_id": alerta.usuario_id,
+        "tipo": alerta.tipo,
+        "titulo": alerta.titulo,
+        "contenido": alerta.contenido,
+        "fecha_creacion": ahora,
+        "estado": "PENDIENTE"
+    }
+
+@router.delete("/limpiar")
+def limpiar_alertas():
+    """Elimina todas las alertas registradas para dejar la bandeja en 0."""
+    res = execute_query("DELETE FROM NOTIFICACION", commit=True)
+    return {"success": True, "eliminadas": res["affected_rows"]}

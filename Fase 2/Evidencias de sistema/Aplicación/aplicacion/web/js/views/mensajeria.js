@@ -7,6 +7,9 @@ const mensajeriaView = {
   hasLoaded: false,
   currentUserId: null,
   isLoadingMessages: false,
+  isSendingMessage: false,
+  draftMessage: "",
+  sendError: "",
   _pollIntervalId: null,
 
   startPolling() {
@@ -14,7 +17,7 @@ const mensajeriaView = {
     this._pollIntervalId = setInterval(() => {
       // Solo refrescar si estamos en la vista de mensajeria y la pagina esta visible
       if (document.hidden || app.currentView !== 'mensajeria') return;
-      if (window.api && api.isOnline && this.activeConversationId) {
+      if (window.api && this.activeConversationId) {
         this.pollMessages();
       }
     }, 3000);
@@ -28,22 +31,33 @@ const mensajeriaView = {
   },
 
   async pollMessages() {
-    if (!window.api || !api.isOnline || !this.activeConversationId) return;
+    if (!window.api || !this.activeConversationId || this.isSendingMessage) return;
     try {
       const msgs = await api.getMessages(this.activeConversationId);
       if (Array.isArray(msgs)) {
         const stream = document.getElementById('desktop-chat-stream');
-        const isNearBottom = stream ? (stream.scrollHeight - stream.scrollTop - stream.clientHeight < 120) : false;
-        
+        const isNearBottom = stream ? (stream.scrollHeight - stream.scrollTop - stream.clientHeight < 120) : true;
+        const activeEl = document.activeElement;
+        const wasTyping = activeEl && activeEl.id === 'chat-text-input';
+
         // Si el numero de mensajes cambio o el ultimo mensaje es distinto
-        const changed = msgs.length !== this.messages.length || 
-          (msgs.length > 0 && msgs[msgs.length - 1].id !== (this.messages[this.messages.length - 1] || {}).id);
-        
+        const changed = msgs.length !== this.messages.length ||
+          (msgs.length > 0 && String(msgs[msgs.length - 1].id) !== String((this.messages[this.messages.length - 1] || {}).id));
+
         if (changed) {
           this.messages = msgs;
+          const userId = (app.currentUser && app.currentUser.id) ? app.currentUser.id : 13;
+          const convs = await api.getConversations(userId).catch(() => null);
+          if (Array.isArray(convs) && convs.length > 0) {
+            this.conversations = convs;
+          }
           app.renderCurrentView();
           if (isNearBottom) {
             this.scrollToBottom();
+          }
+          if (wasTyping) {
+            const nextInput = document.getElementById('chat-text-input');
+            if (nextInput) nextInput.focus();
           }
         }
       }
@@ -52,30 +66,22 @@ const mensajeriaView = {
     }
   },
 
-  // Inicializar y cargar datos desde la API
-  async initData() {
-    if (this._isInitializing) return;
+  // Inicializar y cargar datos desde Cloud Firestore / API
+  async initData(force = false) {
+    if (this._isInitializing && !force) return;
     this._isInitializing = true;
 
     const userId = (app.currentUser && app.currentUser.id) ? app.currentUser.id : 13;
     this.currentUserId = userId;
     this.startPolling();
 
-    // Asegurar que api.checkHealth() haya corrido al menos una vez
-    if (window.api && !api.isOnline) {
-      try {
-        await api.checkHealth();
-      } catch (e) {}
-    }
-
-    if (window.api && api.isOnline) {
+    if (window.api) {
       try {
         const convs = await api.getConversations(userId);
         if (Array.isArray(convs) && convs.length > 0) {
           this.conversations = convs;
-          // Si no hay conversación activa válida, seleccionar la primera
-          if (!this.conversations.find(c => c.id === this.activeConversationId)) {
-            this.activeConversationId = this.conversations[0].id;
+          if (!this.conversations.find(c => Number(c.id) === Number(this.activeConversationId))) {
+            this.activeConversationId = Number(this.conversations[0].id);
           }
           await this.loadMessages(this.activeConversationId);
           this.hasLoaded = true;
@@ -87,8 +93,8 @@ const mensajeriaView = {
       }
     }
 
-    // Fallback local si el backend no está disponible
-    const isProf = userId === 12;
+    // Fallback local si no hay conexión
+    const isProf = Number(userId) === 12 || Number(userId) === 11;
     this.conversations = mockData.chatChannels.map(ch => ({
       id: ch.id === "ch-2" ? 1 : (ch.id === "ch-1" ? 2 : 3),
       asunto: ch.name,
@@ -105,7 +111,7 @@ const mensajeriaView = {
 
   async loadMessages(conversationId) {
     this.isLoadingMessages = true;
-    if (window.api && api.isOnline) {
+    if (window.api) {
       try {
         const msgs = await api.getMessages(conversationId);
         if (Array.isArray(msgs)) {
@@ -126,52 +132,52 @@ const mensajeriaView = {
   },
 
   async handleSendMessage(e) {
-    e.preventDefault();
-    const input = document.getElementById('chat-text-input');
-    if (!input || !input.value.trim()) return;
+    if (e && e.preventDefault) e.preventDefault();
+    if (this.isSendingMessage) return;
 
-    const text = input.value.trim();
-    input.value = '';
+    const input = document.getElementById('chat-text-input');
+    const rawVal = (input ? input.value : (this.draftMessage || '')).trim();
+    if (!rawVal) return;
 
     const senderId = (app.currentUser && app.currentUser.id) ? app.currentUser.id : 13;
-    const convId = this.activeConversationId || 1;
+    const convId = Number(this.activeConversationId || 1);
 
-    if (window.api && api.isOnline) {
+    this.draftMessage = '';
+    this.sendError = '';
+    if (input) input.value = '';
+    this.isSendingMessage = true;
+    app.renderCurrentView();
+
+    let sendOk = true;
+    if (window.api) {
       try {
-        // Enviar a la API REST de FastAPI (guarda en MySQL)
-        await api.sendMessage(convId, senderId, text);
-        // Recargar mensajes actualizados desde MySQL
-        await this.loadMessages(convId);
-        // Recargar conversaciones para actualizar orden y último mensaje
-        const updatedConvs = await api.getConversations(senderId);
-        if (Array.isArray(updatedConvs) && updatedConvs.length > 0) {
-          this.conversations = updatedConvs;
+        const sendRes = await api.sendMessage(convId, senderId, rawVal);
+        if (sendRes && sendRes.success === false) {
+          sendOk = false;
+          this.sendError = sendRes.error || "No se pudo enviar el mensaje. Intenta nuevamente.";
+          this.draftMessage = rawVal;
         } else {
-          const conv = this.conversations.find(c => c.id === convId);
-          if (conv) {
-            conv.ultimo_mensaje = text;
-            conv.ultima_hora = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          await this.loadMessages(convId);
+          const updatedConvs = await api.getConversations(senderId);
+          if (Array.isArray(updatedConvs) && updatedConvs.length > 0) {
+            this.conversations = updatedConvs;
           }
         }
       } catch (err) {
         console.warn("[Mensajería] Error enviando mensaje a la API:", err);
+        sendOk = false;
+        this.sendError = "Error de conexión al enviar mensaje.";
+        this.draftMessage = rawVal;
       }
-    } else {
-      // Fallback local
-      this.messages.push({
-        id: Date.now(),
-        conversacion_id: convId,
-        remitente_usuario_id: senderId,
-        remitente_nombre: app.currentUser ? app.currentUser.name : "Usuario",
-        contenido: text,
-        hora: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        leido: false,
-        isSelf: true
-      });
     }
 
+    this.isSendingMessage = false;
     app.renderCurrentView();
-    this.scrollToBottom();
+    if (sendOk) {
+      this.scrollToBottom();
+    }
+    const nextInput = document.getElementById('chat-text-input');
+    if (nextInput) nextInput.focus();
   },
 
   scrollToBottom() {
@@ -206,35 +212,13 @@ const mensajeriaView = {
       }
     ];
 
-    const activeConv = conversationsList.find(c => c.id === this.activeConversationId) || conversationsList[0];
+    const activeConv = conversationsList.find(c => Number(c.id) === Number(this.activeConversationId)) || conversationsList[0];
     const messagesList = this.messages;
+    const safeDraft = (this.draftMessage || '').replace(/"/g, '&quot;');
 
     return `
       <div class="space-y-6 animate-fadeIn pb-12">
-        <!-- Header Banner -->
-        <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div class="flex items-center space-x-4">
-            <div class="w-12 h-12 rounded-2xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-bold">
-              <i data-lucide="message-square" class="w-6 h-6"></i>
-            </div>
-            <div>
-              <div class="flex items-center gap-2">
-                <span class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800">Canal de Comunicación Oficial</span>
-                <span class="text-xs text-slate-400">•</span>
-                <span class="text-xs font-bold text-emerald-700">Comunicaciones Activas</span>
-              </div>
-              <h1 class="text-xl font-bold text-slate-900 mt-0.5">Mensajería Institucional</h1>
-              <p class="text-xs text-slate-500">Comunícate de forma directa y trazable entre docentes y familias.</p>
-            </div>
-          </div>
-
-          <div class="flex items-center gap-2">
-            <div class="px-3.5 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 flex items-center gap-1.5">
-              <i data-lucide="message-square" class="w-3.5 h-3.5 text-indigo-600"></i>
-              <span>Canal Oficial</span>
-            </div>
-          </div>
-        </div>
+        
 
         <!-- Ayuda Visual Accesible -->
         <div class="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-blue-900">
@@ -272,7 +256,7 @@ const mensajeriaView = {
             <!-- Listado Dinámico de Conversaciones -->
             <div class="divide-y divide-slate-100 overflow-y-auto flex-1">
               ${conversationsList.map(ch => {
-                const isActive = ch.id === this.activeConversationId;
+                const isActive = Number(ch.id) === Number(this.activeConversationId);
                 const interlocutor = ch.otro_participante || ch.asunto;
                 const rolLabel = (ch.otro_rol || '').includes('PROF') ? 'Profesor Jefe' :
                                  (ch.otro_rol || '').includes('ADMIN') ? 'Dirección' : 'Apoderado';
@@ -338,17 +322,6 @@ const mensajeriaView = {
                   </div>
                 </div>
               </div>
-
-              <div class="flex items-center space-x-2 text-slate-400">
-                <button 
-                  onclick="mensajeriaView.selectConversation(${activeConv.id})"
-                  class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition flex items-center gap-1"
-                  title="Actualizar mensajes"
-                >
-                  <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
-                  <span class="hidden sm:inline">Actualizar</span>
-                </button>
-              </div>
             </div>
 
             <!-- Messages Stream Area -->
@@ -369,10 +342,11 @@ const mensajeriaView = {
                 </div>
               ` : messagesList.map(msg => {
                 // Determinar si el mensaje es del usuario actual
-                const isSelf = msg.remitente_usuario_id === userId || msg.isSelf === true;
-                const senderName = msg.remitente_nombre || msg.sender || (isSelf ? 'Tú' : (userId === 12 ? 'Carolina Tapia' : 'Tía Marcela'));
+                const isSelf = Number(msg.remitente_usuario_id) === Number(userId) || msg.isSelf === true;
+                const senderName = msg.remitente_nombre || msg.sender || (isSelf ? 'Tú' : (Number(userId) === 12 ? 'Carolina Tapia' : 'Tía Marcela'));
                 const timeText = msg.hora || msg.time || 'Ahora';
-                const textContent = msg.contenido || msg.text || '';
+                const rawText = msg.contenido || msg.text || '';
+                const textContent = rawText.replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
                 return `
                   <div class="flex flex-col ${isSelf ? 'items-end' : 'items-start'}">
@@ -388,11 +362,6 @@ const mensajeriaView = {
                     }">
                       ${textContent}
                     </div>
-
-                    <div class="text-[10px] text-emerald-600 font-semibold mt-1 flex items-center gap-1">
-                      <i data-lucide="check-check" class="w-3.5 h-3.5"></i>
-                      <span>Entregado</span>
-                    </div>
                   </div>
                 `;
               }).join('')}
@@ -400,12 +369,18 @@ const mensajeriaView = {
             </div>
 
             <!-- Message Input Composer -->
-            <div class="p-4 bg-white border-t border-slate-200">
+            <div class="p-4 bg-white border-t border-slate-200 space-y-2">
+              ${this.sendError ? `
+                <div role="status" class="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center gap-2">
+                  <i data-lucide="alert-circle" class="w-4 h-4 text-rose-600 flex-shrink-0"></i>
+                  <span>${this.sendError}</span>
+                </div>
+              ` : ''}
               <form onsubmit="mensajeriaView.handleSendMessage(event)" class="flex items-center gap-2">
                 <button 
                   type="button" 
                   onclick="alert('El repositorio de justificativos médicos y archivos adjuntos está disponible para el canal de la profesora jefe.')" 
-                  class="p-3 rounded-xl hover:bg-slate-100 text-slate-500 transition border border-slate-200" 
+                  class="p-3 rounded-xl hover:bg-slate-100 text-slate-500 transition border border-slate-200 cursor-pointer" 
                   title="Adjuntar justificativo o documento"
                 >
                   <i data-lucide="paperclip" class="w-5 h-5"></i>
@@ -415,15 +390,18 @@ const mensajeriaView = {
                   type="text" 
                   id="chat-text-input"
                   required
+                  value="${safeDraft}"
+                  oninput="mensajeriaView.draftMessage = this.value"
                   placeholder="Escribe un mensaje..."
                   class="flex-1 text-sm bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 >
 
                 <button 
                   type="submit" 
-                  class="px-5 py-3 rounded-xl text-xs sm:text-sm font-bold theme-primary-bg text-white shadow hover:opacity-95 transition flex items-center gap-2 cursor-pointer active:scale-95"
+                  ${this.isSendingMessage ? 'disabled' : ''}
+                  class="px-5 py-3 rounded-xl text-xs sm:text-sm font-bold theme-primary-bg text-white shadow hover:opacity-95 transition flex items-center gap-2 cursor-pointer active:scale-95 disabled:opacity-60"
                 >
-                  <span>Enviar</span>
+                  <span>${this.isSendingMessage ? 'Enviando...' : 'Enviar'}</span>
                   <i data-lucide="send" class="w-4 h-4"></i>
                 </button>
               </form>

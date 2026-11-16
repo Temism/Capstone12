@@ -1,32 +1,8 @@
-// API Client Móvil EduConnect con Resiliencia Offline, URL Configurable LAN y Servicios de Voz IA
+// API Client Móvil EduConnect - Conectado a Firebase Cloud Firestore
 const mobileApi = {
-  // [REQ-01] Persistencia obligatoria en localStorage ('educonnect_api_url')
-  baseUrl: (() => {
-    const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
-    try {
-      const saved = localStorage.getItem('educonnect_api_url');
-      if (saved) {
-        // Corregir automáticamente puertos inválidos previos (como 5040) o IPs obsoletas
-        if (saved.includes(':5040') || saved.includes('192.168.1.85')) {
-          const fixed = isAndroid ? 'http://192.168.1.113:8000/api' : 'http://127.0.0.1:8000/api';
-          localStorage.setItem('educonnect_api_url', fixed);
-          return fixed;
-        }
-        if (isAndroid && (saved.includes('127.0.0.1') || saved.includes('localhost'))) {
-          const fixed = 'http://192.168.1.113:8000/api';
-          localStorage.setItem('educonnect_api_url', fixed);
-          return fixed;
-        }
-        return saved;
-      }
-    } catch (e) {}
-    if (isAndroid) {
-      return 'http://192.168.1.113:8000/api';
-    }
-    return 'http://127.0.0.1:8000/api';
-  })(),
+  baseUrl: 'https://educonnect-capstone-2026-8f776.web.app/api',
   token: localStorage.getItem('educonnect_jwt_token') || null,
-  isOnline: false,
+  isOnline: true,
   _currentAudio: null,
   _ttsCache: {},
   _speakingTimer: null,
@@ -35,17 +11,14 @@ const mobileApi = {
     if (!url) return;
     let clean = String(url).trim().replace(/\/+$/, '');
     if (!/^https?:\/\//i.test(clean)) {
-      clean = 'http://' + clean;
+      clean = 'https://' + clean;
     }
     clean = clean.replace(/\/api\/?$/i, '') + '/api';
     this.baseUrl = clean;
-    try {
-      localStorage.setItem('educonnect_api_url', this.baseUrl);
-    } catch (e) {}
   },
 
   getServerHostUrl() {
-    return (this.baseUrl || 'http://192.168.1.113:8000/api').replace(/\/api\/?$/, '');
+    return (this.baseUrl || 'https://educonnect-capstone-2026-8f776.web.app/api').replace(/\/api\/?$/, '');
   },
 
   getHeaders() {
@@ -97,54 +70,50 @@ const mobileApi = {
     });
   },
 
-  // [REQ-01] Prueba inmediata contra /api/health y guardado permanente en localStorage
+  // [REQ-01] Prueba inmediata contra Firebase Cloud Firestore (y opcionalmente servidor LAN)
   async checkHealth(candidateUrl) {
     if (candidateUrl && String(candidateUrl).trim()) {
       this.setBaseUrl(candidateUrl);
     }
-    const hostUrl = this.getServerHostUrl();
 
-    // 1. Probar la URL solicitada con timeout estricto de 2.0 segundos
-    const primaryRes = await this.probeSingleHealth(hostUrl, 2000);
-    if (primaryRes.ok) {
-      this.isOnline = true;
-      return { success: true, data: primaryRes.data, host: hostUrl };
-    }
-
-    // 2. Si falló, probar en paralelo los 3 endpoints candidatos conocidos (máx 1.8s)
-    const fallbackCandidates = [
-      'http://192.168.1.113:8000',
-      'http://10.0.2.2:8000',
-      'http://127.0.0.1:8000'
-    ].filter(h => h.toLowerCase() !== hostUrl.toLowerCase());
-
-    if (fallbackCandidates.length > 0) {
-      const results = await Promise.all(
-        fallbackCandidates.map(h => this.probeSingleHealth(h, 1800))
-      );
-      const working = results.find(r => r && r.ok);
-      if (working) {
-        this.setBaseUrl(working.host);
-        this.isOnline = true;
-        return {
-          success: true,
-          data: working.data,
-          host: working.host,
-          autoRecovered: true
-        };
-      }
+    if (window.firebaseDb) {
+      try {
+        const fbRes = await firebaseDb.checkHealth();
+        if (fbRes && fbRes.database_connected) {
+          this.isOnline = true;
+          return {
+            success: true,
+            data: fbRes,
+            host: `Firebase Cloud (${fbRes.project_id})`
+          };
+        }
+      } catch (e) {}
     }
 
     this.isOnline = false;
     return {
       success: false,
-      error: 'Error de conexión: verifique IP y que el servidor esté activo en puerto 8000',
-      host: hostUrl
+      error: 'Error de conexión: verifique su conexión a internet',
+      host: 'Firebase Cloud'
     };
   },
 
-  // 1. Autenticación (POST /api/auth/login)
+  // 1. Autenticación (Firebase Cloud Firestore)
   async login(email, password) {
+    if (window.firebaseDb) {
+      try {
+        const fbRes = await firebaseDb.login(email, password);
+        if (fbRes.ok && fbRes.data) {
+          this.isOnline = true;
+          this.token = fbRes.data.access_token;
+          try { localStorage.setItem('educonnect_jwt_token', this.token); } catch (e) {}
+          return { success: true, data: fbRes.data };
+        }
+        return { success: false, detail: fbRes.detail || 'Credenciales no válidas' };
+      } catch (e) {
+        console.warn('[MobileApi] Error en login Firebase:', e);
+      }
+    }
     if (!this.isOnline) {
       return { success: false, error: 'offline', detail: 'Servidor no alcanzable en modo offline' };
     }
@@ -169,44 +138,34 @@ const mobileApi = {
     }
   },
 
-  // 2. Alertas del usuario (GET /api/alertas/usuario/{usuario_id})
+  // 2. Alertas del usuario (Firebase Cloud Firestore)
   async getAlertasUsuario(usuarioId) {
-    if (this.isOnline) {
+    if (window.firebaseDb) {
       try {
-        const res = await fetch(`${this.baseUrl}/alertas/usuario/${usuarioId}`, {
-          headers: this.getHeaders()
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data)) {
-            localStorage.setItem(`educonnect_cache_alertas_${usuarioId}`, JSON.stringify(data));
-            return data;
-          }
-        }
+        const data = await firebaseDb.getAlertasUsuario(usuarioId || 13);
+        this.isOnline = true;
+        localStorage.setItem(`educonnect_cache_alertas_${usuarioId}`, JSON.stringify(data));
+        return data;
       } catch (e) {
-        console.warn('[MobileApi] Falló carga de alertas en vivo:', e);
+        console.warn('[MobileApi] Falló carga de alertas en Firebase:', e);
       }
     }
     const cached = localStorage.getItem(`educonnect_cache_alertas_${usuarioId}`);
     if (cached) {
       try { return JSON.parse(cached); } catch (e) {}
     }
-    return null;
+    return [];
   },
 
-  // 3. Confirmar / Acuse de recibo de alerta (PUT /api/alertas/{notificacion_id}/leer)
+  // 3. Confirmar / Acuse de recibo de alerta
   async confirmarAlerta(notificacionId) {
-    if (this.isOnline) {
+    if (window.firebaseDb) {
       try {
-        const res = await fetch(`${this.baseUrl}/alertas/${notificacionId}/leer`, {
-          method: 'PUT',
-          headers: this.getHeaders()
-        });
-        if (res.ok) {
-          return { success: true };
-        }
+        this.isOnline = true;
+        await firebaseDb.marcarAlertaLeida(notificacionId);
+        return { success: true };
       } catch (e) {
-        console.warn('[MobileApi] Falló confirmación online:', e);
+        console.warn('[MobileApi] Falló confirmación en Firebase:', e);
       }
     }
     const queue = JSON.parse(localStorage.getItem('educonnect_offline_acuses') || '[]');
@@ -217,46 +176,47 @@ const mobileApi = {
     return { success: true, offline: true };
   },
 
-  // 4. Crear alerta (POST /api/alertas/)
+  // 4. Crear alerta
   async emitirAlerta(usuarioId, tipo, titulo, contenido) {
-    if (this.isOnline) {
+    if (window.firebaseDb) {
       try {
-        const res = await fetch(`${this.baseUrl}/alertas/`, {
-          method: 'POST',
-          headers: this.getHeaders(),
-          body: JSON.stringify({
-            usuario_id: usuarioId,
-            tipo: tipo || 'urgente',
-            titulo: titulo,
-            contenido: contenido
-          })
+        this.isOnline = true;
+        return await firebaseDb.emitirAlerta({
+          usuario_id: usuarioId || 13,
+          tipo: tipo || 'urgente',
+          titulo,
+          contenido
         });
-        if (res.ok) {
-          return await res.json();
-        }
       } catch (e) {
-        console.warn('[MobileApi] Falló emisión online:', e);
+        console.warn('[MobileApi] Falló emisión en Firebase:', e);
       }
     }
-    return { message: 'Alerta guardada localmente (modo offline)', alerta_id: Date.now() };
+    return { message: 'Alerta guardada localmente', alerta_id: Date.now() };
   },
 
-  // 5. Conversaciones del usuario (GET /api/mensajeria/conversaciones/usuario/{usuario_id})
-  async getConversaciones(usuarioId) {
-    if (this.isOnline) {
+  // 4.b Vaciar historial de alertas
+  async limpiarAlertas() {
+    if (window.firebaseDb) {
       try {
-        const res = await fetch(`${this.baseUrl}/mensajeria/conversaciones/usuario/${usuarioId}`, {
-          headers: this.getHeaders()
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data)) {
-            localStorage.setItem(`educonnect_cache_conv_${usuarioId}`, JSON.stringify(data));
-            return data;
-          }
-        }
+        this.isOnline = true;
+        return await firebaseDb.limpiarAlertas();
       } catch (e) {
-        console.warn('[MobileApi] Falló conversaciones online:', e);
+        console.warn('[MobileApi] Falló limpieza de alertas en Firebase:', e);
+      }
+    }
+    return { success: true, eliminadas: 0 };
+  },
+
+  // 5. Conversaciones del usuario
+  async getConversaciones(usuarioId) {
+    if (window.firebaseDb) {
+      try {
+        this.isOnline = true;
+        const data = await firebaseDb.getConversaciones(usuarioId);
+        localStorage.setItem(`educonnect_cache_conv_${usuarioId}`, JSON.stringify(data));
+        return data;
+      } catch (e) {
+        console.warn('[MobileApi] Falló conversaciones en Firebase:', e);
       }
     }
     const cached = localStorage.getItem(`educonnect_cache_conv_${usuarioId}`);
@@ -266,81 +226,52 @@ const mobileApi = {
     return null;
   },
 
-  // 6. Mensajes de una conversación (GET /api/mensajeria/conversacion/{id}/mensajes)
+  // 6. Mensajes de una conversación
   async getMensajes(conversacionId) {
-    if (this.isOnline) {
+    if (window.firebaseDb) {
       try {
-        const res = await fetch(`${this.baseUrl}/mensajeria/conversacion/${conversacionId}/mensajes`, {
-          headers: this.getHeaders()
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data)) {
-            localStorage.setItem(`educonnect_cache_msg_${conversacionId}`, JSON.stringify(data));
-            return data;
-          }
-        }
+        const data = await firebaseDb.getMensajes(conversacionId || 1);
+        this.isOnline = true;
+        localStorage.setItem(`educonnect_cache_msg_${conversacionId}`, JSON.stringify(data));
+        return data;
       } catch (e) {
-        console.warn('[MobileApi] Falló mensajes online:', e);
+        console.warn('[MobileApi] Falló mensajes en Firebase:', e);
       }
     }
     const cached = localStorage.getItem(`educonnect_cache_msg_${conversacionId}`);
     if (cached) {
       try { return JSON.parse(cached); } catch (e) {}
     }
-    return null;
+    return [];
   },
 
-  // 7. Enviar mensaje (POST /api/mensajeria/mensaje)
+  // 7. Enviar mensaje
   async enviarMensaje(conversacionId, remitenteUsuarioId, contenido) {
-    if (this.isOnline) {
+    if (window.firebaseDb) {
       try {
-        const res = await fetch(`${this.baseUrl}/mensajeria/mensaje`, {
-          method: 'POST',
-          headers: this.getHeaders(),
-          body: JSON.stringify({
-            conversacion_id: conversacionId,
-            remitente_usuario_id: remitenteUsuarioId,
-            contenido: contenido
-          })
-        });
-        if (res.ok) {
-          return await res.json();
-        }
+        this.isOnline = true;
+        return await firebaseDb.enviarMensaje(conversacionId || 1, remitenteUsuarioId, contenido);
       } catch (e) {
-        console.warn('[MobileApi] Falló envío online:', e);
+        console.warn('[MobileApi] Falló envío en Firebase:', e);
       }
     }
-    const offlineMsg = {
-      conversacion_id: conversacionId,
-      remitente_usuario_id: remitenteUsuarioId,
-      contenido: contenido,
-      fecha_envio: new Date().toISOString()
-    };
-    const queue = JSON.parse(localStorage.getItem('educonnect_offline_mensajes') || '[]');
-    queue.push(offlineMsg);
-    localStorage.setItem('educonnect_offline_mensajes', JSON.stringify(queue));
     return {
-      message: 'Mensaje en cola offline',
+      message: 'Mensaje en cola',
       mensaje_id: Date.now(),
       fecha: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
   },
 
-  // 8. Reportería integral del estudiante (GET /api/calificaciones/reporteria/{alumno_id})
+  // 8. Reportería integral del estudiante
   async getReporteria(alumnoId = 5) {
-    if (this.isOnline) {
+    if (window.firebaseDb) {
       try {
-        const res = await fetch(`${this.baseUrl}/calificaciones/reporteria/${alumnoId}`, {
-          headers: this.getHeaders()
-        });
-        if (res.ok) {
-          const data = await res.json();
-          localStorage.setItem(`educonnect_cache_rep_${alumnoId}`, JSON.stringify(data));
-          return data;
-        }
+        const data = await firebaseDb.getReporteriaSummary(alumnoId);
+        this.isOnline = true;
+        localStorage.setItem(`educonnect_cache_rep_${alumnoId}`, JSON.stringify(data));
+        return data;
       } catch (e) {
-        console.warn('[MobileApi] Falló reportería online:', e);
+        console.warn('[MobileApi] Falló reportería en Firebase:', e);
       }
     }
     const cached = localStorage.getItem(`educonnect_cache_rep_${alumnoId}`);
@@ -350,45 +281,87 @@ const mobileApi = {
     return null;
   },
 
-  // 9. [REQ-02] Actividades asignadas al alumno (GET /api/actividades/alumno/{student_ref})
+  // 9. [REQ-02] Actividades asignadas al alumno
   async getActividadesAlumno(studentRef = 5) {
-    if (this.isOnline) {
+    if (window.firebaseDb) {
       try {
-        const res = await fetch(`${this.baseUrl}/actividades/alumno/${studentRef}`, {
-          headers: this.getHeaders()
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data && Array.isArray(data.actividades)) {
-            localStorage.setItem(`educonnect_cache_acts_${studentRef}`, JSON.stringify(data.actividades));
-            return data.actividades;
-          }
+        const data = await firebaseDb.getActividadesAlumno(studentRef);
+        this.isOnline = true;
+        if (data && Array.isArray(data.actividades)) {
+          localStorage.setItem(`educonnect_cache_acts_${studentRef}`, JSON.stringify(data.actividades));
+          return data.actividades;
         }
       } catch (e) {
-        console.warn('[MobileApi] Falló carga de actividades alumno:', e);
+        console.warn('[MobileApi] Falló carga de actividades alumno en Firebase:', e);
       }
     }
     const cached = localStorage.getItem(`educonnect_cache_acts_${studentRef}`);
     if (cached) {
       try { return JSON.parse(cached); } catch (e) {}
     }
-    return null;
+    return [];
   },
 
-  // 10. Actualizar estado de actividad del alumno (POST /api/actividades/estado)
-  async actualizarEstadoActividad(payload) {
-    if (this.isOnline) {
+  // 9.b Obtener estado de asignación de actividades de un curso
+  async getEstadoActividadesCurso(cursoId = 3) {
+    if (window.firebaseDb) {
       try {
-        const res = await fetch(`${this.baseUrl}/actividades/estado`, {
-          method: 'POST',
-          headers: this.getHeaders(),
-          body: JSON.stringify(payload)
-        });
-        if (res.ok) {
-          return await res.json();
-        }
+        this.isOnline = true;
+        return await firebaseDb.getEstadoActividadesCurso(cursoId);
       } catch (e) {
-        console.warn('[MobileApi] Guardando estado de actividad en cola offline:', e);
+        console.warn('[MobileApi] Falló estado-curso en Firebase:', e);
+      }
+    }
+    return [];
+  },
+
+  // 9.c Asignar una actividad individualmente
+  async asignarActividad(payload) {
+    if (window.firebaseDb) {
+      try {
+        this.isOnline = true;
+        return await firebaseDb.asignarActividad(payload);
+      } catch (e) {
+        console.warn('[MobileApi] Falló asignarActividad en Firebase:', e);
+      }
+    }
+    return { success: true, offline: true };
+  },
+
+  // 9.d Desasignar una actividad individual
+  async desasignarActividad(payload) {
+    if (window.firebaseDb) {
+      try {
+        this.isOnline = true;
+        return await firebaseDb.desasignarActividad(payload);
+      } catch (e) {
+        console.warn('[MobileApi] Falló desasignarActividad en Firebase:', e);
+      }
+    }
+    return { success: true, offline: true };
+  },
+
+  // 9.e Desasignar todas las actividades del curso
+  async desasignarTodasActividades(cursoId = 3) {
+    if (window.firebaseDb) {
+      try {
+        this.isOnline = true;
+        return await firebaseDb.desasignarTodasActividades(cursoId);
+      } catch (e) {
+        console.warn('[MobileApi] Falló desasignarTodasActividades en Firebase:', e);
+      }
+    }
+    return { success: true, offline: true };
+  },
+
+  // 10. Actualizar estado de actividad del alumno
+  async actualizarEstadoActividad(payload) {
+    if (window.firebaseDb) {
+      try {
+        this.isOnline = true;
+        return await firebaseDb.actualizarEstadoActividad(payload);
+      } catch (e) {
+        console.warn('[MobileApi] Error actualizando estado en Firebase:', e);
       }
     }
     const queue = JSON.parse(localStorage.getItem('educonnect_offline_estados') || '[]');
@@ -439,27 +412,34 @@ const mobileApi = {
       this._currentSpeakDone = null;
       try { resolvePrev(true); } catch (e) {}
     }
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      try { window.speechSynthesis.cancel(); } catch (e) {}
+    if (this._speakPollInterval) {
+      clearInterval(this._speakPollInterval);
+      this._speakPollInterval = null;
+    }
+    this._currentUtterance = null;
+    if (typeof window !== 'undefined') {
+      window._onAndroidTtsEnd = null;
+      if (window.AndroidVoiceBridge && typeof window.AndroidVoiceBridge.stopSpeaking === 'function') {
+        try { window.AndroidVoiceBridge.stopSpeaking(); } catch (e) {}
+      }
+      if (window.speechSynthesis) {
+        try { window.speechSynthesis.cancel(); } catch (e) {}
+      }
     }
   },
 
-  async speakText(text, onStart, onEnd) {
-    if (!text) {
-      if (onEnd) onEnd();
-      return;
-    }
-    this.stopSpeaking();
-    const mySeq = this._speakSeq;
+  getStaticTtsAudioUrl(text, voiceId = 'IKne3meq5aSn9XLyUdCD') {
+    const clean = (text || '').trim();
+    if (!clean || !window.firebaseDb || typeof window.firebaseDb.sha256 !== 'function') return null;
+    const vid = (voiceId || 'IKne3meq5aSn9XLyUdCD').trim();
+    const raw = `${vid}_${clean}`;
+    const utf8 = unescape(encodeURIComponent(raw));
+    const digest = window.firebaseDb.sha256(utf8);
+    return digest ? `audio_cache/${digest}.mp3` : null;
+  },
 
-    if (onStart) onStart();
-
-    // 1. Reproducir directamente el stream MP3 de /api/tts/hablar dentro del gesto del usuario (sin await previo que pierda el foco de reproducción en Android)
-    const cleanText = encodeURIComponent(text.trim());
-    const hostUrl = this.getServerHostUrl();
-    const ttsUrl = `${hostUrl}/api/tts/hablar?text=${cleanText}`;
-
-    const playedFromBackend = await new Promise((resolve) => {
+  _playAudioUrl(url, mySeq, onEnd, guardMs = 1800) {
+    return new Promise((resolve) => {
       let settled = false;
       const done = (ok) => {
         if (settled) return;
@@ -474,10 +454,9 @@ const mobileApi = {
 
       const audio = new Audio();
       audio.preload = 'auto';
-      audio.src = ttsUrl;
+      audio.src = url;
       this._currentAudio = audio;
 
-      // Salvaguarda si el servidor no responde en 4.5 segundos
       const loadGuard = setTimeout(() => {
         if (mySeq !== this._speakSeq) {
           done(true);
@@ -491,7 +470,7 @@ const mobileApi = {
           } catch (e) {}
           done(false);
         }
-      }, 4500);
+      }, guardMs);
 
       audio.onplaying = () => {
         if (mySeq !== this._speakSeq) {
@@ -500,7 +479,6 @@ const mobileApi = {
           return;
         }
         clearTimeout(loadGuard);
-        this.isOnline = true;
       };
 
       audio.onended = () => {
@@ -523,12 +501,7 @@ const mobileApi = {
       try {
         const playPromise = audio.play();
         if (playPromise && typeof playPromise.catch === 'function') {
-          playPromise.catch((err) => {
-            if (mySeq !== this._speakSeq) {
-              done(true);
-              return;
-            }
-            console.warn('[MobileApi TTS] Error al iniciar stream de audio:', err);
+          playPromise.catch(() => {
             if (this._currentAudio === audio) {
               this._currentAudio = null;
             }
@@ -542,23 +515,125 @@ const mobileApi = {
         done(false);
       }
     });
+  },
 
-    if (playedFromBackend || mySeq !== this._speakSeq) {
+  async speakText(text, onStart, onEnd) {
+    if (!text) {
+      if (onEnd) onEnd();
       return;
     }
+    this.stopSpeaking();
+    const mySeq = this._speakSeq;
 
-    // 2. Fallback a Web SpeechSynthesis local si el backend no está alcanzable
+    if (onStart) onStart();
+
+    // 1. Audio estático cacheado original de Robot Leo (audio_cache/ incluido en Hosting y APK)
+    const staticUrl = this.getStaticTtsAudioUrl(text);
+    if (staticUrl) {
+      const playedStatic = await this._playAudioUrl(staticUrl, mySeq, onEnd, 2200);
+      if (playedStatic || mySeq !== this._speakSeq) {
+        return;
+      }
+    }
+
+    // 2. Si hay servidor local activo, intentar stream MP3 de /api/tts/hablar
+    if (this._localServerActive) {
+      const cleanText = encodeURIComponent(text.trim());
+      const hostUrl = this.getServerHostUrl();
+      const ttsUrl = `${hostUrl}/api/tts/hablar?text=${cleanText}`;
+
+      const playedFromBackend = await this._playAudioUrl(ttsUrl, mySeq, onEnd, 1800);
+      if (playedFromBackend) {
+        this.isOnline = true;
+      }
+      if (playedFromBackend || mySeq !== this._speakSeq) {
+        return;
+      }
+    }
+
+    // 1.5. Puente nativo Android TextToSpeech (APK Capacitor)
+    if (typeof window !== 'undefined' && window.AndroidVoiceBridge && typeof window.AndroidVoiceBridge.speak === 'function') {
+      try {
+        await new Promise((resolve) => {
+          let finished = false;
+          const finishNative = () => {
+            if (finished) return;
+            finished = true;
+            if (this._speakingTimer) {
+              clearTimeout(this._speakingTimer);
+              this._speakingTimer = null;
+            }
+            if (this._speakPollInterval) {
+              clearInterval(this._speakPollInterval);
+              this._speakPollInterval = null;
+            }
+            if (window._onAndroidTtsEnd === finishNative) {
+              window._onAndroidTtsEnd = null;
+            }
+            if (mySeq === this._speakSeq && onEnd) onEnd();
+            resolve();
+          };
+
+          window._onAndroidTtsEnd = finishNative;
+          window.AndroidVoiceBridge.speak(text.trim());
+
+          const maxMs = Math.max(3000, Math.min(12000, text.length * 95 + 1500));
+          this._speakingTimer = setTimeout(finishNative, maxMs);
+
+          const startedAt = Date.now();
+          this._speakPollInterval = setInterval(() => {
+            if (finished || mySeq !== this._speakSeq) {
+              finishNative();
+              return;
+            }
+            if (Date.now() - startedAt < 400) return;
+            try {
+              if (
+                typeof window.AndroidVoiceBridge.isSpeaking === 'function' &&
+                !window.AndroidVoiceBridge.isSpeaking()
+              ) {
+                finishNative();
+              }
+            } catch (e) {}
+          }, 180);
+        });
+        return;
+      } catch (e) {}
+    }
+
+    // 2. Síntesis de voz nativa del dispositivo (Android / Web SpeechSynthesis)
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       try {
         await new Promise((resolve) => {
+          const synth = window.speechSynthesis;
+          try {
+            if (synth.paused) synth.resume();
+          } catch (e) {}
+
           const utter = new SpeechSynthesisUtterance(text);
+          this._currentUtterance = utter;
           utter.lang = 'es-CL';
           utter.rate = 0.95;
           utter.pitch = 1.0;
+
+          try {
+            const voices = synth.getVoices ? synth.getVoices() : [];
+            if (voices && voices.length > 0) {
+              const preferred =
+                voices.find((v) => v.lang && v.lang.toLowerCase() === 'es-cl') ||
+                voices.find((v) => v.lang && ['es-419', 'es-es', 'es-mx', 'es-ar'].includes(v.lang.toLowerCase())) ||
+                voices.find((v) => v.lang && v.lang.toLowerCase().startsWith('es'));
+              if (preferred) utter.voice = preferred;
+            }
+          } catch (e) {}
+
           let finished = false;
           const finishUtter = () => {
             if (finished) return;
             finished = true;
+            if (this._currentUtterance === utter) {
+              this._currentUtterance = null;
+            }
             if (this._speakingTimer) {
               clearTimeout(this._speakingTimer);
               this._speakingTimer = null;
@@ -568,9 +643,9 @@ const mobileApi = {
           };
           utter.onend = finishUtter;
           utter.onerror = finishUtter;
-          const estMs = Math.max(2000, Math.min(8000, text.length * 70));
+          const estMs = Math.max(2500, Math.min(10000, text.length * 85 + 1000));
           this._speakingTimer = setTimeout(finishUtter, estMs);
-          window.speechSynthesis.speak(utter);
+          synth.speak(utter);
         });
         return;
       } catch (e) {}
@@ -588,10 +663,10 @@ const mobileApi = {
     });
   },
 
-  // 12. [REQ-05] Transcripción de Voz (STT) contra el backend (/api/stt/transcribir)
+  // 12. [REQ-05] Transcripción de Voz (STT)
   async transcribeAudio(audioBlob) {
-    if (!audioBlob) {
-      return { success: false, error: 'Sin archivo de audio' };
+    if (!audioBlob || !this._localServerActive) {
+      return { success: false, error: 'Usando reconocimiento de voz integrado' };
     }
     try {
       const mime = (audioBlob.type || '').toLowerCase();
@@ -623,8 +698,9 @@ const mobileApi = {
     }
   },
 
-  // 13. [REQ-05] Evaluador Pedagógico IA (/api/ia/evaluar-respuesta)
+  // 13. [REQ-05] Evaluador Pedagógico IA
   async evaluarRespuestaIA(payload) {
+    if (!this._localServerActive) return null;
     try {
       const hostUrl = this.getServerHostUrl();
       const res = await fetch(`${hostUrl}/api/ia/evaluar-respuesta`, {
@@ -642,18 +718,58 @@ const mobileApi = {
     return null;
   },
 
+  // 13.b Revisión Docente de Actividad con Tiempos por Número y Resumen IA (Cloud Firestore)
+  async getRevisionActividad(cursoId = 3, codigoFrontend = 'act-conteo', alumnoId = null) {
+    if (window.firebaseDb) {
+      try {
+        this.isOnline = true;
+        return await firebaseDb.getRevisionActividad(cursoId, codigoFrontend, alumnoId || 5);
+      } catch (e) {
+        console.warn('[MobileApi] Error obteniendo revisión en Firebase:', e);
+      }
+    }
+    return null;
+  },
+
+  async generarResumenDocenteIa(payload) {
+    if (window.firebaseDb) {
+      this.isOnline = true;
+      return firebaseDb.buildResumenDocenteIa(payload || {});
+    }
+    return null;
+  },
+
+  async enviarResumenApoderado(payload) {
+    if (window.firebaseDb) {
+      try {
+        this.isOnline = true;
+        return await firebaseDb.enviarResumenApoderado(payload);
+      } catch (e) {
+        console.warn('[MobileApi] Error enviando resumen en Firebase:', e);
+      }
+    }
+    return null;
+  },
+
+  async reiniciarPuntajeActividad(payload) {
+    if (window.firebaseDb) {
+      try {
+        this.isOnline = true;
+        return await firebaseDb.reiniciarPuntajeActividad(payload);
+      } catch (e) {
+        console.warn('[MobileApi] Error reiniciando puntaje en Firebase:', e);
+      }
+    }
+    return null;
+  },
+
   // 14. Sincronización en segundo plano de colas offline al reconectar
   async syncOfflineQueues() {
-    if (!this.isOnline) return;
+    if (!this.isOnline || !window.firebaseDb) return;
     const acuses = JSON.parse(localStorage.getItem('educonnect_offline_acuses') || '[]');
     if (acuses.length > 0) {
       for (const notifId of acuses) {
-        try {
-          await fetch(`${this.baseUrl}/alertas/${notifId}/leer`, {
-            method: 'PUT',
-            headers: this.getHeaders()
-          });
-        } catch (e) {}
+        try { await firebaseDb.marcarAlertaLeida(notifId); } catch (e) {}
       }
       localStorage.removeItem('educonnect_offline_acuses');
     }
@@ -661,13 +777,7 @@ const mobileApi = {
     const offlineMsgs = JSON.parse(localStorage.getItem('educonnect_offline_mensajes') || '[]');
     if (offlineMsgs.length > 0) {
       for (const m of offlineMsgs) {
-        try {
-          await fetch(`${this.baseUrl}/mensajeria/mensaje`, {
-            method: 'POST',
-            headers: this.getHeaders(),
-            body: JSON.stringify(m)
-          });
-        } catch (e) {}
+        try { await firebaseDb.enviarMensaje(m.conversacion_id || 1, m.remitente_usuario_id || 12, m.contenido); } catch (e) {}
       }
       localStorage.removeItem('educonnect_offline_mensajes');
     }
@@ -675,13 +785,7 @@ const mobileApi = {
     const offlineEstados = JSON.parse(localStorage.getItem('educonnect_offline_estados') || '[]');
     if (offlineEstados.length > 0) {
       for (const st of offlineEstados) {
-        try {
-          await fetch(`${this.baseUrl}/actividades/estado`, {
-            method: 'POST',
-            headers: this.getHeaders(),
-            body: JSON.stringify(st)
-          });
-        } catch (e) {}
+        try { await firebaseDb.actualizarEstadoActividad(st); } catch (e) {}
       }
       localStorage.removeItem('educonnect_offline_estados');
     }

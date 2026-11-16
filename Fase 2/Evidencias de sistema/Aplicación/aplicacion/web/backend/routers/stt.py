@@ -17,25 +17,11 @@ DEEPGRAM_WS_URL = (
 )
 
 def get_deepgram_config():
-    """Obtiene la configuracion de Deepgram de forma segura desde variables de entorno o archivo dedicado."""
+    """Obtiene la configuracion de Deepgram exclusivamente desde variables de entorno del servidor."""
     api_key = os.getenv("DEEPGRAM_API_KEY", "").strip()
-    if not api_key or api_key == "tu_deepgram_api_key_aqui":
-        # Revisar si el usuario ingreso la clave en backend/deepgram_api_key.txt
-        key_file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "deepgram_api_key.txt")
-        if os.path.exists(key_file_path):
-            try:
-                with open(key_file_path, "r", encoding="utf-8") as kf:
-                    for line in kf:
-                        clean_line = line.strip()
-                        if clean_line and not clean_line.startswith("#") and clean_line != "PEGA_AQUI_TU_API_KEY" and clean_line != "tu_deepgram_api_key_aqui":
-                            api_key = clean_line
-                            break
-            except Exception:
-                pass
-
     model = os.getenv("DEEPGRAM_MODEL", "nova-2").strip()
     language = os.getenv("DEEPGRAM_LANGUAGE", "es").strip()
-    is_configured = bool(api_key and api_key != "tu_deepgram_api_key_aqui" and api_key != "PEGA_AQUI_TU_API_KEY")
+    is_configured = bool(api_key and api_key not in ("tu_deepgram_api_key_aqui", "PEGA_AQUI_TU_API_KEY"))
     return {
         "api_key": api_key,
         "model": model,

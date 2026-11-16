@@ -38,3 +38,6 @@ scratch/
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+firebase-db.js
+

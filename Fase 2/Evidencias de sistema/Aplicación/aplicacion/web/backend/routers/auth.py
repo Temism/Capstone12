@@ -39,22 +39,17 @@ class ChangePasswordRequest(BaseModel):
 # Funciones Criptográficas y de Seguridad
 # -------------------------------------------------------------
 def verify_password(plain_password: str, stored_password: str) -> bool:
-    """Verifica si la contraseña ingresada coincide con el hash o texto almacenado."""
+    """Verifica si la contraseña ingresada coincide con el hash bcrypt almacenado."""
     if not stored_password:
         return False
 
-    # 1. Contraseñas hasheadas con bcrypt ($2b$ o $2a$)
     if stored_password.startswith("$2b$") or stored_password.startswith("$2a$"):
-        # Compatibilidad con los hashes de ejemplo del script inicial bd.txt
-        if "examplehash" in stored_password:
-            return plain_password in ["admin123", "profe123", "apoderado123", "alumno123"]
         try:
             return bcrypt.checkpw(plain_password.encode("utf-8"), stored_password.encode("utf-8"))
         except Exception:
             return False
 
-    # 2. Contraseñas de texto plano de migración inicial
-    return plain_password == stored_password
+    return False
 
 def hash_password(plain_password: str) -> str:
     """Genera un hash seguro utilizando bcrypt con salt automático."""
@@ -156,8 +151,13 @@ def verify_session(authorization: Optional[str] = Header(None)):
     }
 
 @router.get("/usuarios")
-def list_users():
-    """Lista los usuarios del sistema sin exponer hashes de contraseñas."""
+def list_users(authorization: Optional[str] = Header(None)):
+    """Lista los usuarios del sistema (requiere token JWT válido con rol ADMINISTRADOR)."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="No autorizado")
+    payload = decode_token(authorization.split(" ")[1])
+    if "ADMINISTRADOR" not in payload.get("roles", []) and payload.get("rol_principal") != "ADMINISTRADOR":
+        raise HTTPException(status_code=403, detail="Acceso restringido a dirección académica")
     query = """
         SELECT u.id, u.nombre, u.email, u.estado, 
                GROUP_CONCAT(r.nombre SEPARATOR ', ') as roles_str

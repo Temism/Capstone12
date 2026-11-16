@@ -7,7 +7,6 @@ const layouts = {
       case 'alumno':
         return [
           { id: "actividades", name: "Misiones con Voz", icon: "bot", badge: "Robot Leo" },
-          { id: "reporteria", name: "Mi Semáforo", icon: "bar-chart-3", badge: null },
           { id: "mensajeria", name: "Mis Mensajes", icon: "message-square", badge: null }
         ];
 
@@ -15,7 +14,8 @@ const layouts = {
         return [
           { id: "reporteria", name: "Informe y Semáforo", icon: "bar-chart-3", badge: "Destacado" },
           { id: "actividades", name: "Tareas", icon: "bot", badge: "Voz IA" },
-          { id: "mensajeria", name: "Mensajería Docente", icon: "message-square", badge: "1 nuevo" }
+          { id: "alertas", name: "Alertas Escolares", icon: "bell-ring", badge: null },
+          { id: "mensajeria", name: "Mensajería Docente", icon: "message-square", badge: null }
         ];
 
       case 'profesora':
@@ -41,6 +41,7 @@ const layouts = {
   // Renderizador principal del Layout Bento Dock
   renderBento(currentUser, currentView, currentTheme, viewHtml) {
     const dockItems = this.getDockItemsForRole(currentUser ? currentUser.role : 'apoderado');
+    const canChangePhoto = currentUser && ['apoderado', 'profesora', 'admin'].includes(currentUser.role);
 
     return `
       <div class="min-h-screen flex flex-col bg-gradient-to-b from-slate-50 via-slate-100/80 to-blue-50/30 pb-28 font-sans">
@@ -51,18 +52,37 @@ const layouts = {
             
             <!-- Branding, Avatar y Rol Activo -->
             <div class="flex items-center space-x-3">
-              <div class="relative">
-                <img 
-                  src="${currentUser.avatar}" 
-                  alt="${currentUser.name}" 
-                  onerror="this.onerror=null; this.src='https://ui-avatars.com/api/?name=' + encodeURIComponent('${currentUser.name}') + '&background=2563eb&color=fff&bold=true&size=150';"
-                  class="w-11 h-11 rounded-2xl object-cover ring-2 ring-amber-400 shadow-md"
+              ${canChangePhoto ? `
+                <button
+                  type="button"
+                  onclick="app.openProfilePhotoModal()"
+                  title="Cambiar foto de perfil"
+                  class="relative group cursor-pointer focus:outline-none"
                 >
-                <span class="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white"></span>
-              </div>
+                  <img 
+                    src="${currentUser.avatar}" 
+                    alt="${currentUser.name}" 
+                    onerror="this.onerror=null; this.src='${currentUser.defaultAvatar || ''}' || ('https://ui-avatars.com/api/?name=' + encodeURIComponent('${currentUser.name}') + '&background=2563eb&color=fff&bold=true&size=150');"
+                    class="w-11 h-11 rounded-2xl object-cover ring-2 ring-amber-400 shadow-md group-hover:opacity-90 transition"
+                  >
+                  <span class="absolute -bottom-1 -right-1 w-5 h-5 bg-slate-900 text-amber-400 rounded-full border-2 border-white flex items-center justify-center shadow-xs group-hover:scale-110 transition">
+                    <i data-lucide="camera" class="w-2.5 h-2.5"></i>
+                  </span>
+                </button>
+              ` : `
+                <div class="relative">
+                  <img 
+                    src="${currentUser.avatar}" 
+                    alt="${currentUser.name}" 
+                    onerror="this.onerror=null; this.src='https://ui-avatars.com/api/?name=' + encodeURIComponent('${currentUser.name}') + '&background=2563eb&color=fff&bold=true&size=150';"
+                    class="w-11 h-11 rounded-2xl object-cover ring-2 ring-amber-400 shadow-md"
+                  >
+                  <span class="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white"></span>
+                </div>
+              `}
 
               <div>
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
                   <span class="font-black text-slate-900 text-sm sm:text-base">${currentUser.name}</span>
                   <span class="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${
                     currentUser.role === 'admin' ? 'bg-purple-100 text-purple-900' :
@@ -71,6 +91,16 @@ const layouts = {
                   }">
                     ${currentUser.roleLabel}
                   </span>
+                  ${canChangePhoto ? `
+                    <button
+                      type="button"
+                      onclick="app.openProfilePhotoModal()"
+                      class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 hover:bg-amber-100 text-slate-700 hover:text-slate-950 border border-slate-200 transition cursor-pointer"
+                    >
+                      <i data-lucide="camera" class="w-3 h-3"></i>
+                      <span>Cambiar foto</span>
+                    </button>
+                  ` : ''}
                 </div>
                 <p class="text-[11px] text-slate-500 font-medium flex items-center gap-1.5 mt-0.5">
                   <span>${currentUser.course}</span>
@@ -80,28 +110,19 @@ const layouts = {
               </div>
             </div>
 
-            <!-- Controles: Enlace a Móvil y Cerrar Sesión -->
+            <!-- Controles: Cerrar sesión -->
             <div class="flex items-center space-x-2.5 self-end sm:self-center">
               <div id="api-status-badge" class="hidden"></div>
 
-              <!-- Enlace a Versión Móvil -->
-              <a 
-                href="mobile.html"
-                class="px-3 py-2 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-black transition-all shadow-xs flex items-center gap-1.5"
-                title="Probar Versión Móvil (Ctrl+Shift+C)"
-              >
-                <i data-lucide="smartphone" class="w-3.5 h-3.5"></i>
-                <span class="hidden sm:inline">Versión Móvil</span>
-              </a>
-
-              <!-- Botón Salir / Cambiar de Rol -->
+              <!-- Botón Cerrar sesión -->
               <button 
+                type="button"
                 onclick="app.logout()"
-                class="px-3.5 py-2 rounded-2xl bg-slate-100 hover:bg-red-50 hover:text-red-700 text-slate-700 text-xs font-bold transition-all border border-slate-200 flex items-center gap-1.5 active:scale-95"
-                title="Cerrar Sesión y volver al Login"
+                class="px-3.5 py-2 rounded-2xl bg-slate-100 hover:bg-red-50 hover:text-red-700 text-slate-700 text-xs font-bold transition-all border border-slate-200 flex items-center gap-1.5 active:scale-95 cursor-pointer"
+                title="Cerrar sesión"
               >
                 <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
-                <span class="hidden sm:inline">Cambiar Rol</span>
+                <span>Cerrar sesión</span>
               </button>
 
             </div>

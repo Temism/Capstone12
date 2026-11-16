@@ -7,46 +7,47 @@ const reporteriaView = {
     const parent = mockData.parentUser;
     const grades = mockData.getStudentGrades ? mockData.getStudentGrades(student.id) : mockData.gradeHistory;
     const studentsList = mockData.parentStudents || [student];
+    const isTeacherOrAdmin = Boolean(window.app && app.currentUser && (app.currentUser.role === 'profesora' || app.currentUser.role === 'admin'));
+    const teacherName = (isTeacherOrAdmin && app.currentUser && app.currentUser.name) || (mockData.teacherUser && mockData.teacherUser.name) || 'Profesora Jefe';
 
     return `
       <div class="space-y-6 animate-fadeIn pb-12">
         
-        <!-- FILTRO / SELECTOR DE ESTUDIANTE (Multi-estudiante para familias) -->
-        <div class="bg-white rounded-2xl p-3 sm:p-4 border border-slate-200 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div class="flex items-center gap-2">
-            <div class="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+        <!-- FILTRO / SELECTOR DE ESTUDIANTE (Combobox escalable para cursos y familias) -->
+        <div class="bg-white rounded-2xl p-3.5 sm:p-4 border border-slate-200 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold flex-shrink-0">
               <i data-lucide="users" class="w-4 h-4"></i>
             </div>
             <div>
-              <span class="text-xs font-black text-slate-800 uppercase tracking-wider block">Seleccionar Estudiante:</span>
-              <span class="text-[11px] text-slate-500">Cambia entre tus pupilos para revisar su reporte</span>
+              <label for="reporteria-student-select" class="text-xs font-black text-slate-800 uppercase tracking-wider block cursor-pointer">
+                Seleccionar Estudiante:
+              </label>
+              <span class="text-[11px] text-slate-500">
+                ${isTeacherOrAdmin ? 'Selecciona un estudiante de la nómina para revisar su rendimiento' : 'Selecciona entre tus pupilos para revisar su reporte'}
+              </span>
             </div>
           </div>
 
-          <div class="flex items-center gap-2 w-full sm:w-auto">
-            ${studentsList.map(s => {
-              const isSelected = s.id === student.id;
-              return `
-                <button 
-                  type="button"
-                  onclick="reporteriaView.switchStudent('${s.id}')"
-                  class="flex-1 sm:flex-initial flex items-center gap-2.5 px-4 py-2 rounded-xl text-xs font-black transition-all ${
-                    isSelected 
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20 ring-2 ring-blue-600 ring-offset-1 scale-[1.02]' 
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                  }"
-                >
-                  <img 
-                    src="${s.avatar}" 
-                    alt="${s.shortName}" 
-                    onerror="this.onerror=null; this.src='https://ui-avatars.com/api/?name=' + encodeURIComponent('${s.shortName}') + '&background=2563eb&color=fff&bold=true&size=150';"
-                    class="w-6 h-6 rounded-full object-cover ring-1 ring-white/60"
-                  >
-                  <span>${s.shortName}</span>
-                  <span class="text-[10px] font-medium opacity-85">(${s.course})</span>
-                </button>
-              `;
-            }).join('')}
+          <div class="flex items-center gap-3 w-full sm:w-auto">
+            <img 
+              src="${student.avatar}" 
+              alt="${student.shortName}" 
+              onerror="this.onerror=null; this.src='https://ui-avatars.com/api/?name=' + encodeURIComponent('${student.shortName}') + '&background=2563eb&color=fff&bold=true&size=150';"
+              class="w-9 h-9 rounded-xl object-cover ring-2 ring-blue-500/30 shadow-xs flex-shrink-0"
+            >
+            <select
+              id="reporteria-student-select"
+              name="student_id"
+              onchange="reporteriaView.switchStudent(this.value)"
+              class="w-full sm:w-72 bg-slate-50 hover:bg-slate-100/80 border border-slate-300 text-slate-900 text-xs sm:text-sm font-black rounded-xl px-3.5 py-2.5 focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer transition"
+            >
+              ${studentsList.map(s => `
+                <option value="${s.id}" ${s.id === student.id ? 'selected' : ''}>
+                  ${s.name || s.shortName} (${s.course})
+                </option>
+              `).join('')}
+            </select>
           </div>
         </div>
 
@@ -61,12 +62,14 @@ const reporteriaView = {
             >
             <div>
               <div class="flex items-center gap-2">
-                <span class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800">Portal del Apoderado</span>
+                <span class="text-xs font-semibold px-2.5 py-0.5 rounded-full ${isTeacherOrAdmin ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'}">
+                  ${isTeacherOrAdmin ? 'Vista Docente • Rendimiento' : 'Portal del Apoderado'}
+                </span>
                 <span class="text-xs text-slate-400">•</span>
                 <span class="text-xs text-slate-500 font-bold">${student.course}</span>
               </div>
-              <h1 class="text-xl font-bold text-slate-900 mt-0.5">Informe de tu Pupilo: ${student.name}</h1>
-              <p class="text-xs text-slate-500">Apoderada: ${parent.name} | ${student.school}</p>
+              <h1 class="text-xl font-bold text-slate-900 mt-0.5">${isTeacherOrAdmin ? `Rendimiento de Estudiante: ${student.name}` : `Informe de tu Pupilo: ${student.name}`}</h1>
+              <p class="text-xs text-slate-500">${isTeacherOrAdmin ? `Docente: ${teacherName} | Apoderada: ${parent.name}` : `Apoderada: ${parent.name} | ${student.school}`}</p>
             </div>
           </div>
 
@@ -104,12 +107,14 @@ const reporteriaView = {
     const langActs = rawActivities.filter(a => (a.subject || '').toLowerCase().includes('lenguaje'));
     const langDone = langActs.filter(a => a.status === 'Entregada').length;
 
-    const mathTasksLabel = mathActs.length > 0 ? `${mathDone} de ${mathActs.length} tareas completadas` : student.mathTasks;
-    const langTasksLabel = langActs.length > 0 ? `${langDone} de ${langActs.length} tareas completadas` : student.languageTasks;
+    const mathTasksLabel = mathActs.length > 0 ? `${mathDone} de ${mathActs.length} tareas completadas` : '0 de 0 tareas asignadas';
+    const langTasksLabel = langActs.length > 0 ? `${langDone} de ${langActs.length} tareas completadas` : '0 de 0 tareas asignadas';
 
-    const pendingHeaderTitle = pendingCount > 0
-      ? `${pendingCount} ${pendingCount === 1 ? 'tarea pendiente' : 'tareas pendientes'}`
-      : (inProgressCount > 0 ? `${inProgressCount} ${inProgressCount === 1 ? 'tarea en progreso' : 'tareas en progreso'}` : 'Todas las tareas al día');
+    const pendingHeaderTitle = rawActivities.length === 0
+      ? 'Sin actividades asignadas'
+      : (pendingCount > 0
+        ? `${pendingCount} ${pendingCount === 1 ? 'tarea pendiente' : 'tareas pendientes'}`
+        : (inProgressCount > 0 ? `${inProgressCount} ${inProgressCount === 1 ? 'tarea en progreso' : 'tareas en progreso'}` : 'Todas las tareas al día'));
 
     return `
       <!-- DIAGNÓSTICO EN LENGUAJE NATURAL (Lo más importante en 5 segundos) -->
@@ -128,14 +133,14 @@ const reporteriaView = {
             </p>
           </div>
 
-          <!-- Big Visual Grade Stamp -->
+          <!-- Big Visual Score Stamp -->
           <div class="bg-white text-slate-900 rounded-2xl p-4 shadow-xl text-center min-w-[170px] border border-white/20 self-start sm:self-center">
-            <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Nota Promedio</span>
-            <span class="text-4xl font-black text-emerald-600 block my-0.5">${student.overallGrade}</span>
+            <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Puntaje Promedio</span>
+            <span class="text-4xl font-black text-emerald-600 block my-0.5">${student.overallGrade} <span class="text-lg text-slate-400">/ 10</span></span>
             <span class="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-              Escala 1 a 7 (Destacado)
+              Escala del 1 al 10
             </span>
-            <span class="text-[10px] text-slate-400 block mt-1">Aprueba con 4.0</span>
+            <span class="text-[10px] text-slate-400 block mt-1">Puntaje máximo: 10 pts</span>
           </div>
         </div>
       </div>
@@ -154,9 +159,11 @@ const reporteriaView = {
             </div>
             <h3 class="font-bold text-slate-900 text-base mt-2">${pendingHeaderTitle}</h3>
             <p class="text-xs text-slate-600 mt-1">
-              ${activePendingTask
-                ? `"${activePendingTask.title}" (${activePendingTask.status})`
-                : `¡Excelente! ${student.shortName} completó todas sus actividades asignadas.`}
+              ${rawActivities.length === 0
+                ? 'No hay actividades asignadas en este momento (0 asignadas).'
+                : (activePendingTask
+                  ? `"${activePendingTask.title}" (${activePendingTask.status})`
+                  : `¡Excelente! ${student.shortName} completó todas sus actividades asignadas.`)}
             </p>
             <div class="grid grid-cols-3 gap-1.5 mt-3 text-center">
               <div class="p-2 rounded-xl bg-amber-50 border border-amber-200/80">
@@ -236,11 +243,11 @@ const reporteriaView = {
       <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
         <div class="flex items-center justify-between pb-3 border-b border-slate-100">
           <div>
-            <h3 class="font-bold text-slate-900 text-base">Semáforo de Notas por Asignatura</h3>
-            <p class="text-xs text-slate-500">Verde = Muy bien | Amarillo = Atención | Rojo = Requiere apoyo urgente</p>
+            <h3 class="font-bold text-slate-900 text-base">Semáforo de Puntajes por Asignatura</h3>
+            <p class="text-xs text-slate-500">Verde = Excelente (9 a 10 pts) | Amarillo = En avance (7 a 8 pts) | Rojo = Requiere apoyo (1 a 6 pts)</p>
           </div>
           <span class="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
-            Escala chilena de 1.0 a 7.0
+            Escala de Puntajes: 1 al 10
           </span>
         </div>
 
@@ -257,12 +264,12 @@ const reporteriaView = {
               <div class="flex items-center gap-2 text-[11px] text-emerald-800 font-bold pt-1">
                 <span>Avance: <strong>${mathTasksLabel}</strong></span>
                 <span>•</span>
-                <span>Aprobado (mínimo 4.0)</span>
+                <span>Escala 1 al 10 pts</span>
               </div>
             </div>
             <div class="text-right">
               <span class="text-4xl font-black text-emerald-600">${student.mathGrade}</span>
-              <span class="block text-[11px] text-slate-400 font-medium">Destacado</span>
+              <span class="block text-[11px] text-slate-400 font-medium">de 10 puntos</span>
             </div>
           </div>
 
@@ -277,23 +284,23 @@ const reporteriaView = {
               <div class="flex items-center gap-2 text-[11px] text-emerald-800 font-bold pt-1">
                 <span>Avance: <strong>${langTasksLabel}</strong></span>
                 <span>•</span>
-                <span>Aprobado (mínimo 4.0)</span>
+                <span>Escala 1 al 10 pts</span>
               </div>
             </div>
             <div class="text-right">
               <span class="text-4xl font-black text-emerald-600">${student.languageGrade}</span>
-              <span class="block text-[11px] text-slate-400 font-medium">Sobre la media</span>
+              <span class="block text-[11px] text-slate-400 font-medium">de 10 puntos</span>
             </div>
           </div>
 
         </div>
 
-        <!-- DETALLE DE ESTADOS DE ACTIVIDADES Y EVALUACIONES (Sincronizado con Base de Datos) -->
+        <!-- DETALLE DE ESTADOS DE ACTIVIDADES Y PUNTAJES (Sincronizado con Base de Datos) -->
         <div class="pt-4 border-t border-slate-100 space-y-3">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
-              <h4 class="font-bold text-slate-900 text-sm sm:text-base">Estado Detallado de Actividades de ${student.shortName}</h4>
-              <p class="text-xs text-slate-500">Seguimiento en tiempo real del progreso, entregas y calificaciones registradas</p>
+              <h4 class="font-bold text-slate-900 text-sm sm:text-base">Estado Detallado de Actividades y Puntajes de ${student.shortName}</h4>
+              <p class="text-xs text-slate-500">Seguimiento en tiempo real del progreso, entregas y puntajes registrados (escala 1 al 10)</p>
             </div>
             <div class="flex items-center gap-2 text-xs font-bold">
               <span class="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200">${completedCount} Completadas</span>
@@ -310,12 +317,18 @@ const reporteriaView = {
                   <th class="px-4 py-3">Asignatura</th>
                   <th class="px-4 py-3">Estado Actual</th>
                   <th class="px-4 py-3">Avance</th>
-                  <th class="px-4 py-3">Calificación</th>
+                  <th class="px-4 py-3">Puntaje (1 al 10)</th>
                   <th class="px-4 py-3 text-right">Acción</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100 bg-white">
-                ${rawActivities.map(act => {
+                ${rawActivities.length === 0 ? `
+                  <tr>
+                    <td colspan="6" class="px-4 py-8 text-center text-slate-500 text-xs font-medium">
+                      No hay actividades asignadas en este momento (0 actividades asignadas • Puntaje obtenido: 0 / 10).
+                    </td>
+                  </tr>
+                ` : rawActivities.map(act => {
                   const isDone = act.status === 'Entregada';
                   const isInProg = act.status === 'En progreso';
                   const progPct = isDone ? 100 : (act.progressPercent || 0);
@@ -324,12 +337,29 @@ const reporteriaView = {
                     : (isInProg ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-amber-100 text-amber-900 border-amber-200');
                   const statusIcon = isDone ? 'check-circle' : (isInProg ? 'loader' : 'clock');
                   const safeTitle = (act.title || '').replace(/'/g, "\\'");
+                  const isTeacherOrAdmin = Boolean(window.app && app.currentUser && (app.currentUser.role === 'profesora' || app.currentUser.role === 'admin'));
+                  const rawComment = String(act.comments || '');
+                  const hasMistakes = Boolean(act.teacherDiagnosis || rawComment.includes('Se equivocó en:'));
+                  const mistakeDetail = act.teacherDiagnosis || (rawComment.includes('Se equivocó en:') ? rawComment.substring(rawComment.indexOf('Se equivocó en:')) : '');
+                  const parentFriendlySubtitle = isDone
+                    ? 'Actividad completada por voz con Robot Leo'
+                    : (act.dueDate || 'Asignada por la profesora');
 
                   return `
                     <tr class="hover:bg-slate-50/80 transition-colors">
                       <td class="px-4 py-3.5">
                         <span class="font-bold text-slate-900 block">${act.title}</span>
-                        <span class="text-[11px] text-slate-400">${act.comments || act.dueDate || ''}</span>
+                        <span class="text-[11px] text-slate-400 block">${parentFriendlySubtitle}</span>
+                        ${isTeacherOrAdmin && (hasMistakes || isDone) ? `
+                          <div class="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border ${
+                            hasMistakes
+                              ? 'bg-rose-50 text-rose-800 border-rose-200'
+                              : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                          }">
+                            <i data-lucide="${hasMistakes ? 'alert-triangle' : 'check-circle-2'}" class="w-3.5 h-3.5"></i>
+                            <span><strong>Diagnóstico Docente:</strong> ${hasMistakes ? mistakeDetail : 'Sin equivocaciones detectadas en los números'}</span>
+                          </div>
+                        ` : ''}
                       </td>
                       <td class="px-4 py-3.5">
                         <span class="text-xs font-bold px-2.5 py-1 rounded-lg ${
@@ -351,23 +381,36 @@ const reporteriaView = {
                         </div>
                       </td>
                       <td class="px-4 py-3.5">
-                        ${isDone
-                          ? `<span class="font-black text-emerald-700 text-sm">${act.score || '7.0 / 7.0'}</span>`
-                          : `<span class="text-xs font-medium text-slate-400">${isInProg ? 'En evaluación' : 'Sin calificar'}</span>`
+                        ${isDone || act.score
+                          ? `<span class="font-black text-emerald-700 text-sm">${act.score || '10 / 10 pts'}</span>`
+                          : `<span class="text-xs font-medium text-slate-400">${isInProg ? 'En evaluación' : 'Sin puntaje'}</span>`
                         }
                       </td>
                       <td class="px-4 py-3.5 text-right">
-                        <button
-                          onclick="app.openVoiceModal('${safeTitle}', '${act.id}')"
-                          class="px-3 py-1.5 rounded-xl text-xs font-bold ${
-                            isDone
-                              ? 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                              : 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-xs'
-                          } transition inline-flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <i data-lucide="volume-2" class="w-3.5 h-3.5"></i>
-                          <span>${isDone ? 'Repasar' : 'Iniciar'}</span>
-                        </button>
+                        <div class="inline-flex items-center justify-end gap-1.5 flex-wrap">
+                          ${isTeacherOrAdmin ? `
+                            <button
+                              type="button"
+                              onclick="reporteriaView.reiniciarPuntajeActividad('${act.id}', '${student.id}')"
+                              title="Reiniciar puntaje y estado de esta actividad a Pendiente (0%)"
+                              class="px-3 py-1.5 rounded-xl text-xs font-black bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-xs transition inline-flex items-center gap-1 cursor-pointer active:scale-95"
+                            >
+                              <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+                              <span>Reiniciar Puntaje</span>
+                            </button>
+                          ` : ''}
+                          <button
+                            onclick="app.openVoiceModal('${safeTitle}', '${act.id}')"
+                            class="px-3 py-1.5 rounded-xl text-xs font-bold ${
+                              isDone
+                                ? 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                : 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-xs'
+                            } transition inline-flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <i data-lucide="volume-2" class="w-3.5 h-3.5"></i>
+                            <span>${isDone ? 'Repasar' : 'Iniciar'}</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   `;
@@ -405,6 +448,24 @@ const reporteriaView = {
     }
     if (window.api && api.syncStudentDataFromDb) {
       await api.syncStudentDataFromDb(studentId);
+    }
+    app.renderCurrentView();
+  },
+
+  async reiniciarPuntajeActividad(code, studentId) {
+    const alumnoDbId = studentId === 'alu-103' ? 6 : 5;
+    if (window.api && api.reiniciarPuntajeActividad) {
+      await api.reiniciarPuntajeActividad({
+        curso_id: 3,
+        codigo_frontend: code,
+        alumno_id: alumnoDbId
+      });
+    }
+    if (window.api && api.syncStudentDataFromDb) {
+      await api.syncStudentDataFromDb(studentId);
+    }
+    if (window.asignarView) {
+      asignarView.hasLoadedStatus = false;
     }
     app.renderCurrentView();
   },

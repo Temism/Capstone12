@@ -1,0 +1,169 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model (EduConnect Capstone Hardened Security Rules)
+// ===============================================================
+//
+// 1. usuarios/{userId}
+//    - Allowed IDs: '11', '12', '13', '14'
+//    - Required fields: id, nombre (string <= 120), email (string <= 120),
+//      password_hash (SHA-256 hex string == 64 chars), rol_principal, role
+//    - Optional fields: cargo, alumno_id, avatar (string <= 150000)
+//    - Prohibited fields: password (plaintext never permitted)
+//
+// 2. health/{docId}
+//    - Allowed IDs on write: 'init_v1', 'init_v2_sec'
+//    - Required fields: initialized (bool), project_id (string <= 100)
+//
+// 3. actividades/{actId}
+//    - Required fields: codigo_frontend (string <= 60), titulo (string <= 250)
+//    - Max fields: 25
+//
+// 4. entregas/{entregaId}
+//    - Required fields: alumno_id, codigo_frontend (string <= 60),
+//      estado ('Pendiente' | 'En progreso' | 'Entregada')
+//    - Max fields: 35
+//
+// 5. conversaciones/{convId}
+//    - Required fields: id, asunto (string <= 250)
+//    - Max fields: 15
+//
+// 6. mensajes/{msgId}
+//    - Required fields: conversacion_id, remitente_usuario_id,
+//      contenido (string 1..3000)
+//    - Max fields: 25
+//
+// 7. alertas/{alertaId}
+//    - Required fields: titulo (string <= 250)
+//    - Optional validated fields: contenido (string <= 2000), mensaje (string <= 2000)
+//    - Max fields: 25
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Domain Validators (Used in BOTH create and update)
+    // ===============================================================
+
+    function isValidUsuario(userId) {
+      return userId in ['11', '12', '13', '14'] &&
+             !('password' in request.resource.data) &&
+             request.resource.data.keys().hasAll(['id', 'nombre', 'email', 'password_hash', 'rol_principal', 'role']) &&
+             request.resource.data.keys().hasOnly(['id', 'nombre', 'email', 'password_hash', 'rol_principal', 'role', 'cargo', 'alumno_id', 'avatar']) &&
+             request.resource.data.password_hash is string &&
+             request.resource.data.password_hash.size() == 64 &&
+             request.resource.data.nombre is string &&
+             request.resource.data.nombre.size() <= 120 &&
+             request.resource.data.email is string &&
+             request.resource.data.email.size() <= 120 &&
+             (!('avatar' in request.resource.data) ||
+              (request.resource.data.avatar is string && request.resource.data.avatar.size() <= 150000));
+    }
+
+    function isValidHealth(docId) {
+      return docId in ['init_v1', 'init_v2_sec'] &&
+             request.resource.data.keys().hasAll(['initialized', 'project_id']) &&
+             request.resource.data.initialized is bool &&
+             request.resource.data.project_id is string &&
+             request.resource.data.project_id.size() <= 100;
+    }
+
+    function isValidActividad() {
+      return request.resource.data.keys().hasAll(['codigo_frontend', 'titulo']) &&
+             request.resource.data.keys().size() <= 25 &&
+             request.resource.data.codigo_frontend is string &&
+             request.resource.data.codigo_frontend.size() <= 60 &&
+             request.resource.data.titulo is string &&
+             request.resource.data.titulo.size() <= 250;
+    }
+
+    function isValidEntrega() {
+      return request.resource.data.keys().hasAll(['alumno_id', 'codigo_frontend', 'estado']) &&
+             request.resource.data.keys().size() <= 35 &&
+             request.resource.data.codigo_frontend is string &&
+             request.resource.data.codigo_frontend.size() <= 60 &&
+             request.resource.data.estado in ['Pendiente', 'En progreso', 'Entregada'];
+    }
+
+    function isValidConversacion() {
+      return request.resource.data.keys().hasAll(['id', 'asunto']) &&
+             request.resource.data.keys().size() <= 15 &&
+             request.resource.data.asunto is string &&
+             request.resource.data.asunto.size() <= 250;
+    }
+
+    function isValidMensaje() {
+      return request.resource.data.keys().hasAll(['conversacion_id', 'remitente_usuario_id', 'contenido']) &&
+             request.resource.data.keys().size() <= 25 &&
+             request.resource.data.contenido is string &&
+             request.resource.data.contenido.size() >= 1 &&
+             request.resource.data.contenido.size() <= 3000;
+    }
+
+    function isValidAlerta() {
+      return request.resource.data.keys().hasAll(['titulo']) &&
+             request.resource.data.keys().size() <= 25 &&
+             request.resource.data.titulo is string &&
+             request.resource.data.titulo.size() <= 250 &&
+             (!('contenido' in request.resource.data) ||
+              (request.resource.data.contenido is string && request.resource.data.contenido.size() <= 2000)) &&
+             (!('mensaje' in request.resource.data) ||
+              (request.resource.data.mensaje is string && request.resource.data.mensaje.size() <= 2000));
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    match /usuarios/{userId} {
+      allow get: if userId in ['11', '12', '13', '14'];
+      allow list: if false;
+      allow create, update: if isValidUsuario(userId);
+      allow delete: if false;
+    }
+
+    match /health/{docId} {
+      allow get: if true;
+      allow list: if false;
+      allow create, update: if isValidHealth(docId);
+      allow delete: if false;
+    }
+
+    match /actividades/{actId} {
+      allow read: if true;
+      allow create, update: if isValidActividad();
+      allow delete: if false;
+    }
+
+    match /entregas/{entregaId} {
+      allow read: if true;
+      allow create, update: if isValidEntrega();
+      allow delete: if true;
+    }
+
+    match /conversaciones/{convId} {
+      allow read: if true;
+      allow create, update: if isValidConversacion();
+      allow delete: if false;
+    }
+
+    match /mensajes/{msgId} {
+      allow read: if true;
+      allow create, update: if isValidMensaje();
+      allow delete: if true;
+    }
+
+    match /alertas/{alertaId} {
+      allow read: if true;
+      allow create, update: if isValidAlerta();
+      allow delete: if true;
+    }
+
+    // Default deny for all other unknown collections and paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

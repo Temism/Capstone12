@@ -1,5 +1,6 @@
 import mysql.connector
 import os
+import bcrypt
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -7,8 +8,12 @@ load_dotenv()
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = int(os.getenv("DB_PORT", "3306"))
 DB_USER = os.getenv("DB_USER", "root")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "root123")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 DB_NAME = os.getenv("DB_NAME", "plataforma_educativa")
+
+def _hash_env_pass(env_key: str) -> str:
+    raw = os.getenv(env_key, os.urandom(16).hex())
+    return bcrypt.hashpw(raw.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("utf-8")
 
 def seed_demo_data():
     conn = mysql.connector.connect(
@@ -22,22 +27,21 @@ def seed_demo_data():
     )
     cur = conn.cursor(dictionary=True)
     
-    # 1. Verificar si ya existen los usuarios demo
+    # 1. Verificar si ya existen los usuarios institucionales
     cur.execute("SELECT id, email FROM USUARIO WHERE email = 'apoderado@sanandres.cl'")
     if cur.fetchone():
-        print("Los usuarios demo ya existen en la base de datos.")
+        print("Los usuarios institucionales ya existen en la base de datos.")
         conn.close()
         return
 
-    print("Insertando usuarios demo de Colegio San Andrés...")
+    print("Insertando usuarios institucionales de Colegio San Andrés con hashes bcrypt...")
 
-    # Insertar usuarios
     usuarios = [
-        ("Rodrigo Valenzuela Lagos", "admin@sanandres.cl", "admin123", "ACTIVO", 1), # Admin
-        ("Marcela Soto Valenzuela", "profesora@sanandres.cl", "profe123", "ACTIVO", 2), # Profe
-        ("Carolina Tapia Morales", "apoderado@sanandres.cl", "apoderado123", "ACTIVO", 3), # Apoderado
-        ("Mateo González Tapia", "alumno@sanandres.cl", "alumno123", "ACTIVO", 4), # Alumno
-        ("Sofía González Tapia", "sofia@sanandres.cl", "alumno123", "ACTIVO", 4) # Alumno
+        ("Rodrigo Valenzuela Lagos", "admin@sanandres.cl", _hash_env_pass("SEED_ADMIN_PASS"), "ACTIVO", 1),
+        ("Marcela Soto Valenzuela", "profesora@sanandres.cl", _hash_env_pass("SEED_PROF_PASS"), "ACTIVO", 2),
+        ("Carolina Tapia Morales", "apoderado@sanandres.cl", _hash_env_pass("SEED_APOD_PASS"), "ACTIVO", 3),
+        ("Mateo González Tapia", "alumno@sanandres.cl", _hash_env_pass("SEED_ALUM_PASS"), "ACTIVO", 4),
+        ("Sofía González Tapia", "sofia@sanandres.cl", _hash_env_pass("SEED_ALUM_PASS"), "ACTIVO", 4)
     ]
 
     user_ids = {}

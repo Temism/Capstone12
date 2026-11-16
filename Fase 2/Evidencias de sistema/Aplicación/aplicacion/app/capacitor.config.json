@@ -4,10 +4,7 @@
   "webDir": "www",
   "bundledWebRuntime": false,
   "server": {
-    "cleartext": true,
-    "androidScheme": "http"
-  },
-  "android": {
-    "allowMixedContent": true
+    "cleartext": false,
+    "androidScheme": "https"
   }
 }

@@ -40,23 +40,9 @@ def _normalize_text(text: str) -> str:
 
 
 def get_gemini_config():
-    """Obtiene la API Key de Gemini desde variable de entorno o backend/gemini_api_key.txt."""
+    """Obtiene la API Key de Gemini exclusivamente desde variables de entorno del servidor."""
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     placeholders = {"", "pega_aqui_tu_api_key", "tu_gemini_api_key_aqui"}
-
-    if api_key.lower() in placeholders:
-        key_file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "gemini_api_key.txt")
-        if os.path.exists(key_file_path):
-            try:
-                with open(key_file_path, "r", encoding="utf-8") as kf:
-                    for line in kf:
-                        clean_line = line.strip()
-                        if clean_line and not clean_line.startswith("#") and clean_line.lower() not in placeholders:
-                            api_key = clean_line
-                            break
-            except Exception:
-                pass
-
     is_configured = bool(api_key and api_key.lower() not in placeholders)
     return {
         "api_key": api_key,
@@ -197,3 +183,176 @@ def evaluar_respuesta_comprension(payload: EvaluarRespuestaRequest):
         "retroalimentacion": respaldo.retroalimentacion,
         "transcripcion_evaluada": spoken_clean,
     }
+
+
+class ResumenDocenteIAResult(BaseModel):
+    fortalezas: str = Field(
+        description="Resumen claro de las fortalezas observadas, destacando qué números o preguntas respondió rápido y sin errores."
+    )
+    puntos_mejora: str = Field(
+        description="Puntos específicos de mejora indicando qué números le tomaron más segundos o en cuáles se equivocó y cómo reforzarlos."
+    )
+    mensaje_apoderado: str = Field(
+        description="Mensaje cálido, constructivo y firmado en primera persona por la Profesora Marcela Soto listo para enviar al apoderado por el chat escolar."
+    )
+
+
+class ResumenActividadDocenteRequest(BaseModel):
+    alumno_nombre: Optional[str] = "Mateo González"
+    actividad_codigo: Optional[str] = "act-conteo"
+    actividad_titulo: Optional[str] = "Misión Conteo Mágico: Cuenta del 1 al 10 con Robot Leo"
+    asignatura: Optional[str] = "Matemáticas"
+    calificacion: Optional[float] = 10.0
+    errores_conteo: Optional[List[str]] = None
+    detalle_respuestas: Optional[List[dict]] = None
+
+
+def generar_resumen_docente_ia_interno(payload: ResumenActividadDocenteRequest) -> dict:
+    """
+    Genera el resumen pedagógico con IA para el profesor (fortalezas, puntos de mejora y borrador
+    de mensaje para el apoderado) analizando cómo respondió el alumno y cuánto tardó en cada número.
+    """
+    alumno = (payload.alumno_nombre or "Mateo González").strip()
+    alumno_corto = alumno.split()[0] if alumno else "el estudiante"
+    titulo = (payload.actividad_titulo or "Actividad de Conteo del 1 al 10").strip()
+    puntaje = int(round(float(payload.calificacion if payload.calificacion is not None else 10.0)))
+    errores = [str(e).strip() for e in (payload.errores_conteo or []) if str(e).strip()]
+    detalles = payload.detalle_respuestas or []
+
+    # Analizar tiempos y aciertos paso a paso
+    tiempos_validos = [
+        float(d.get("tiempo_segundos", 0))
+        for d in detalles
+        if isinstance(d, dict) and d.get("tiempo_segundos") is not None
+    ]
+    tiempo_total = round(sum(tiempos_validos), 1) if tiempos_validos else 0.0
+    tiempo_prom = round(tiempo_total / len(tiempos_validos), 1) if tiempos_validos else 0.0
+
+    pasos_rapidos = []
+    pasos_lentos = []
+    pasos_con_error = []
+
+    for d in detalles:
+        if not isinstance(d, dict):
+            continue
+        etiqueta = str(d.get("etiqueta") or f"Número {d.get('paso', '')}").strip()
+        t_seg = float(d.get("tiempo_segundos") or 0.0)
+        err_prev = d.get("errores_previos") or []
+        es_ok = bool(d.get("correcto", True)) and len(err_prev) == 0
+
+        if not es_ok or err_prev:
+            detalle_err = ", ".join(str(x) for x in err_prev) if err_prev else f"respondió {d.get('respondido', '')}"
+            pasos_con_error.append(f"{etiqueta} ({detalle_err}, {t_seg:.1f}s)")
+        elif t_seg >= 3.2:
+            pasos_lentos.append(f"{etiqueta} ({t_seg:.1f}s)")
+        elif t_seg > 0:
+            pasos_rapidos.append(f"{etiqueta} ({t_seg:.1f}s)")
+
+    cfg = get_gemini_config()
+    if cfg["is_configured"] and genai is not None and (detalles or errores):
+        prompt = (
+            "Eres un asistente pedagógico para docentes de 1° y 2° Básico en Chile.\n"
+            f"Estudiante: {alumno}\n"
+            f"Actividad: {titulo} ({payload.asignatura})\n"
+            f"Puntaje obtenido: {puntaje} / 10 pts\n"
+            f"Tiempo total de respuesta: {tiempo_total}s (Promedio por ítem: {tiempo_prom}s)\n"
+            f"Equivocaciones registradas: {', '.join(errores) if errores else 'Ninguna'}\n"
+            f"Detalle paso a paso (con tiempos en segundos): {json.dumps(detalles, ensure_ascii=False)}\n\n"
+            "Genera un diagnóstico docente conciso en español chileno profesional con:\n"
+            "1. `fortalezas`: Qué números o pasos dominó con mayor fluidez y menor tiempo de respuesta.\n"
+            "2. `puntos_mejora`: En qué números se equivocó o tardó más segundos en responder y qué ejercicio concreto practicar.\n"
+            "3. `mensaje_apoderado`: Un mensaje cordial en primera persona escrito por la Profesora Marcela Soto para la apoderada Carolina, "
+            "resumiendo el logro de su hijo(a), mencionando con tacto los números o puntos a reforzar en casa y felicitando su esfuerzo."
+        )
+        try:
+            client = genai.Client(api_key=cfg["api_key"])
+            interaction = client.interactions.create(
+                model="gemini-3.8-flash",
+                input=prompt,
+                response_format={
+                    "type": "text",
+                    "mime_type": "application/json",
+                    "schema": ResumenDocenteIAResult.model_json_schema(),
+                },
+            )
+            parsed = ResumenDocenteIAResult.model_validate_json(interaction.output_text)
+            return {
+                "fortalezas": parsed.fortalezas.strip(),
+                "puntos_mejora": parsed.puntos_mejora.strip(),
+                "mensaje_apoderado": parsed.mensaje_apoderado.strip(),
+                "tiempo_total_segundos": tiempo_total,
+                "tiempo_promedio_segundos": tiempo_prom,
+            }
+        except Exception as e:
+            print(f"[IA RESUMEN DOCENTE] Aviso al invocar Gemini ({e}), usando motor analítico pedagógico local.")
+
+    # Motor analítico pedagógico determinista (siempre disponible y basado en los tiempos y errores reales)
+    if pasos_rapidos:
+        muestra_rapidos = ", ".join(pasos_rapidos[:5])
+        fortalezas_txt = (
+            f"{alumno_corto} demostró excelente fluidez verbal y reconocimiento inmediato en {muestra_rapidos}, "
+            f"manteniendo un ritmo promedio de {tiempo_prom:.1f} segundos por respuesta."
+        )
+    else:
+        fortalezas_txt = (
+            f"{alumno_corto} completó la actividad '{titulo}' con perseverancia y buena disposición auditiva "
+            f"junto al tutor por voz Robot Leo (Puntaje: {puntaje}/10 pts)."
+        )
+
+    puntos_list = []
+    if pasos_con_error:
+        puntos_list.append(f"Reforzar la precisión en: {'; '.join(pasos_con_error)}, donde presentó confusión antes de acertar.")
+    elif errores:
+        puntos_list.append(f"Reforzar la secuencia en: {', '.join(errores)}.")
+
+    if pasos_lentos:
+        puntos_list.append(
+            f"Ejercitar la agilidad de evocación en {', '.join(pasos_lentos)}, ya que tardó más tiempo que su promedio ({tiempo_prom:.1f}s) en pronunciarlos."
+        )
+
+    if not puntos_list:
+        puntos_mejora_txt = (
+            "¡Desempeño sobresaliente! No se registraron equivocaciones ni pausas prolongadas. "
+            "Como siguiente desafío se sugiere practicar el conteo regresivo del 10 al 1 o secuencias de 2 en 2."
+        )
+        foco_casa = (
+            "respondió todos los números en orden y con excelente velocidad sin equivocarse. "
+            "En casa pueden jugar a contar hacia atrás del 10 al 1 para seguir desafiándolo"
+        )
+    else:
+        puntos_mejora_txt = " ".join(puntos_list)
+        detalle_foco = []
+        if errores:
+            detalle_foco.append(f"repasar especialmente {', '.join(errores)}")
+        if pasos_lentos:
+            detalle_foco.append(f"practicar la fluidez en {', '.join(pasos_lentos)}")
+        foco_casa = " y ".join(detalle_foco) if detalle_foco else "repasar la secuencia oral con objetos cotidianos"
+
+    mensaje_apoderado_txt = (
+        f"Hola Carolina, te escribo para contarte que {alumno_corto} completó la actividad \"{titulo}\" "
+        f"obteniendo un puntaje de {puntaje}/10 pts (tiempo promedio de respuesta: {tiempo_prom:.1f}s por número). "
+        f"Como punto de mejora para apoyar en casa, te sugiero {foco_casa}. "
+        f"¡Felicitaciones por el entusiasmo de {alumno_corto}! Cariños, Profesora Marcela Soto."
+    )
+
+    return {
+        "fortalezas": fortalezas_txt,
+        "puntos_mejora": puntos_mejora_txt,
+        "mensaje_apoderado": mensaje_apoderado_txt,
+        "tiempo_total_segundos": tiempo_total,
+        "tiempo_promedio_segundos": tiempo_prom,
+    }
+
+
+@router.post("/resumen-actividad-docente")
+def endpoint_resumen_actividad_docente(payload: ResumenActividadDocenteRequest):
+    """
+    Endpoint para que la profesora genere o regenere con IA el análisis de tiempos por número,
+    puntos de mejora y el mensaje listo para enviar al apoderado.
+    """
+    res = generar_resumen_docente_ia_interno(payload)
+    return {
+        "success": True,
+        **res
+    }
+

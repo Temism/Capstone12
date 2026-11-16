@@ -273,4 +273,15 @@ body {
   animation: rhythmBarSweep var(--beat-duration, 1800ms) linear forwards;
 }
 
+/* Modal Dialog Top-Layer & Scroll Containment */
+dialog:modal {
+  overscroll-behavior: contain;
+}
+dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: rgba(15, 23, 42, 0.72);
+  backdrop-filter: blur(4px);
+}
+
 

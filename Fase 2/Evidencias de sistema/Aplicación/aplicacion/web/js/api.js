@@ -4,12 +4,21 @@
 // de lo contrario aplica fallback transparente a datos locales para garantizar resiliencia total.
 
 const api = {
+  localBackendUrl: 'http://127.0.0.1:8000/api',
   baseUrl: (window.location.protocol === 'file:' || !window.location.host) 
     ? 'http://127.0.0.1:8000/api' 
     : `${window.location.protocol}//${window.location.hostname}:8000/api`,
-  isOnline: false,
+  isOnline: true,
+  hasLocalBackend: false,
   checkedOnce: false,
-  token: localStorage.getItem('educonnect_jwt_token') || null,
+  _liveSpeechTranscript: '',
+  _speechRec: null,
+  _currentUtterance: null,
+  _currentAudio: null,
+  _speakSeq: 0,
+  _speakingTimer: null,
+  _currentSpeakDone: null,
+  token: sessionStorage.getItem('educonnect_jwt_token') || localStorage.getItem('educonnect_jwt_token') || null,
 
   // Utilidad de seguridad contra ataques Cross-Site Scripting (XSS)
   escapeHtml(str) {
@@ -31,27 +40,46 @@ const api = {
     return headers;
   },
 
-  // Comprobar si el backend FastAPI y MySQL están activos
+  // Comprobar si Firebase Cloud Firestore (o el backend local) están activos
   async checkHealth() {
+    const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:';
+    let fbHealthy = false;
+
+    if (window.firebaseDb) {
+      try {
+        const fbHealth = await firebaseDb.checkHealth();
+        if (fbHealth && fbHealth.database_connected) {
+          fbHealthy = true;
+          this.isOnline = true;
+        }
+      } catch (e) {}
+    }
+
+    const probeUrl = isLocalHost ? this.baseUrl : this.localBackendUrl;
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1800);
-      
-      const res = await fetch(`${this.baseUrl}/health`, { signal: controller.signal });
+      const timeoutId = setTimeout(() => controller.abort(), 1200);
+      const res = await fetch(`${probeUrl}/health`, { signal: controller.signal });
       clearTimeout(timeoutId);
 
       if (res.ok) {
         const data = await res.json();
-        this.isOnline = data.database_connected || data.status === 'healthy';
+        this.hasLocalBackend = true;
+        this.baseUrl = probeUrl;
+        this.isOnline = this.isOnline || data.database_connected || data.status === 'healthy';
       } else {
-        this.isOnline = false;
+        this.hasLocalBackend = false;
       }
     } catch (e) {
-      this.isOnline = false;
-    } finally {
-      this.checkedOnce = true;
-      this.updateConnectionBadge();
+      this.hasLocalBackend = false;
     }
+
+    if (!this.hasLocalBackend && !fbHealthy) {
+      this.isOnline = false;
+    }
+
+    this.checkedOnce = true;
+    this.updateConnectionBadge();
     return this.isOnline;
   },
 
@@ -64,8 +92,19 @@ const api = {
     }
   },
 
-  // 1. Autenticación con verificación criptográfica y emisión JWT
+  // 1. Autenticación con verificación en Firebase Cloud Firestore
   async login(email, password) {
+    if (window.firebaseDb) {
+      try {
+        const fbRes = await firebaseDb.login(email, password);
+        if (fbRes.ok && fbRes.data) {
+          this.isOnline = true;
+          this.token = fbRes.data.access_token;
+          try { sessionStorage.setItem('educonnect_jwt_token', this.token); } catch (e) {}
+          return fbRes.data;
+        }
+      } catch (e) {}
+    }
     if (this.isOnline) {
       try {
         const res = await fetch(`${this.baseUrl}/auth/login`, {
@@ -77,7 +116,9 @@ const api = {
           const data = await res.json();
           if (data.access_token) {
             this.token = data.access_token;
-            localStorage.setItem('educonnect_jwt_token', data.access_token);
+            try {
+              sessionStorage.setItem('educonnect_jwt_token', data.access_token);
+            } catch (e) {}
           }
           return data;
         }
@@ -85,34 +126,57 @@ const api = {
         console.warn("[API] Conexión remota no disponible, recurriendo a modo autónomo", err);
       }
     }
-    // Fallback a demoUsers de data.js
-    const roleKey = Object.keys(mockData.demoUsers).find(k => mockData.demoUsers[k].email.toLowerCase() === email.toLowerCase());
+    // Fallback seguro verificando hash SHA-256
+    const inputHash = (window.firebaseDb && firebaseDb.hashPassword)
+      ? firebaseDb.hashPassword(password)
+      : '';
+    const roleKey = Object.keys(mockData.demoUsers).find(
+      k => mockData.demoUsers[k].email.toLowerCase() === email.toLowerCase() &&
+           mockData.demoUsers[k].password_hash === inputHash
+    );
     return roleKey ? mockData.demoUsers[roleKey] : null;
   },
 
   logout() {
     this.token = null;
-    localStorage.removeItem('educonnect_jwt_token');
+    try {
+      sessionStorage.removeItem('educonnect_jwt_token');
+      localStorage.removeItem('educonnect_jwt_token');
+    } catch (e) {}
   },
 
   // 2. Alumnos y Familias (Multi-estudiante y Nómina de Curso)
   async getStudentsByParent(parentId = 13) {
-    if (this.isOnline) {
-      try {
-        const res = await fetch(`${this.baseUrl}/alumnos/apoderado/${parentId}`, {
-          headers: this.getHeaders()
-        });
-        if (res.ok) {
-          return await res.json();
-        }
-      } catch (err) {
-        console.warn("[API] Fallo alumnos vía API, usando datos locales", err);
-      }
-    }
     return mockData.parentStudents;
   },
 
   async getStudentsByCourse(courseId = 3) {
+    if (window.firebaseDb) {
+      this.isOnline = true;
+      if (Number(courseId) === 4) {
+        return [{
+          id: 6,
+          alumno_id: 6,
+          codigo: "alu-103",
+          nombre: "Sofía González Tapia",
+          nombre_completo: "Sofía González Tapia",
+          apoderado_nombre: "Carolina Tapia Morales",
+          apoderado_usuario_id: 13,
+          es_pie: false
+        }];
+      }
+      return [{
+        id: 5,
+        alumno_id: 5,
+        codigo: "alu-102",
+        nombre: "Mateo González Tapia",
+        nombre_completo: "Mateo González Tapia",
+        apoderado_nombre: "Carolina Tapia Morales",
+        apoderado_usuario_id: 13,
+        es_pie: false,
+        condicion_pie: "TEA Nivel 1"
+      }];
+    }
     try {
       const res = await fetch(`${this.baseUrl}/alumnos/curso/${courseId}`, {
         headers: this.getHeaders()
@@ -129,22 +193,25 @@ const api = {
 
   // 3. Actividades con preguntas, voz y asignación docente
   async getActivitiesByCourse(courseId = 3) {
-    if (this.isOnline) {
+    if (window.firebaseDb) {
       try {
-        const res = await fetch(`${this.baseUrl}/actividades/curso/${courseId}`, {
-          headers: this.getHeaders()
-        });
-        if (res.ok) {
-          return await res.json();
-        }
-      } catch (err) {
-        console.warn("[API] Fallo actividades vía API, usando datos locales", err);
-      }
+        const res = await firebaseDb.getActividadesAlumno(5);
+        this.isOnline = true;
+        return res.actividades || [];
+      } catch (e) {}
     }
     return mockData.studentActivities;
   },
 
   async assignActivityToCourse(payload) {
+    if (window.firebaseDb) {
+      try {
+        this.isOnline = true;
+        return await firebaseDb.asignarActividad(payload);
+      } catch (err) {
+        console.warn("[Firebase] Error asignando actividad:", err);
+      }
+    }
     try {
       const res = await fetch(`${this.baseUrl}/actividades/asignar`, {
         method: 'POST',
@@ -163,19 +230,90 @@ const api = {
     }
   },
 
-  // 4. Calificaciones, Estados de Actividades y Reportería Sincronizada con Base de Datos
-  async getStudentGrades(studentId = 1) {
-    if (this.isOnline) {
+  async getCourseActivitiesStatus(courseId = 3) {
+    if (window.firebaseDb) {
       try {
-        const res = await fetch(`${this.baseUrl}/calificaciones/alumno/${studentId}`, {
-          headers: this.getHeaders()
-        });
-        if (res.ok) {
-          return await res.json();
-        }
+        this.isOnline = true;
+        return await firebaseDb.getEstadoActividadesCurso(courseId);
       } catch (err) {
-        console.warn("[API] Fallo calificaciones vía API, usando datos locales", err);
+        console.warn("[Firebase] Error consultando estado del curso:", err);
       }
+    }
+    try {
+      const res = await fetch(`${this.baseUrl}/actividades/estado-curso/${courseId}`, {
+        headers: this.getHeaders()
+      });
+      if (res.ok) {
+        this.isOnline = true;
+        const data = await res.json();
+        return data.actividades || [];
+      }
+    } catch (err) {
+      console.warn("[API] Fallo estado-curso:", err);
+    }
+    return null;
+  },
+
+  async unassignActivity(payload) {
+    if (window.firebaseDb) {
+      try {
+        this.isOnline = true;
+        return await firebaseDb.desasignarActividad(payload);
+      } catch (err) {
+        console.warn("[Firebase] Error desasignando actividad:", err);
+      }
+    }
+    try {
+      const res = await fetch(`${this.baseUrl}/actividades/desasignar`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        this.isOnline = true;
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("[API] Fallo desasignar actividad:", err);
+    }
+    return { success: true, offline: true };
+  },
+
+  async unassignAllActivities(courseId = 3) {
+    if (window.firebaseDb) {
+      try {
+        this.isOnline = true;
+        return await firebaseDb.desasignarTodasActividades(courseId);
+      } catch (err) {
+        console.warn("[Firebase] Error desasignando todas las actividades:", err);
+      }
+    }
+    try {
+      const res = await fetch(`${this.baseUrl}/actividades/desasignar-todas`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ curso_id: courseId })
+      });
+      if (res.ok) {
+        this.isOnline = true;
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("[API] Fallo desasignar todas:", err);
+    }
+    return { success: true, offline: true };
+  },
+
+  // 4. Calificaciones, Estados de Actividades y Reportería Sincronizada con Cloud Firestore
+  async getStudentGrades(studentId = 1) {
+    if (window.firebaseDb) {
+      try {
+        const rep = await firebaseDb.getReporteriaSummary(studentId);
+        return {
+          promedio_general: rep.overall_grade,
+          entregas: rep.entregas
+        };
+      } catch (e) {}
     }
     return {
       promedio_general: mockData.currentStudent.overallGrade,
@@ -184,6 +322,14 @@ const api = {
   },
 
   async getReporteriaSummary(studentId = 'alu-102') {
+    if (window.firebaseDb) {
+      try {
+        this.isOnline = true;
+        return await firebaseDb.getReporteriaSummary(studentId);
+      } catch (err) {
+        console.warn("[Firebase] Error obteniendo reportería:", err);
+      }
+    }
     try {
       const res = await fetch(`${this.baseUrl}/calificaciones/reporteria/${encodeURIComponent(studentId)}`, {
         headers: this.getHeaders()
@@ -199,6 +345,14 @@ const api = {
   },
 
   async updateActivityState(payload) {
+    if (window.firebaseDb) {
+      try {
+        this.isOnline = true;
+        return await firebaseDb.actualizarEstadoActividad(payload);
+      } catch (err) {
+        console.warn("[Firebase] Error actualizando estado de actividad:", err);
+      }
+    }
     try {
       const res = await fetch(`${this.baseUrl}/actividades/estado`, {
         method: 'POST',
@@ -220,44 +374,78 @@ const api = {
     const data = await this.getReporteriaSummary(targetId);
     if (!data || !window.mockData) return null;
 
-    // 1. Actualizar actividades locales con los estados reales de la base de datos
-    const localList = targetId === 'alu-103' ? mockData.sofiaActivities : mockData.studentActivities;
-    if (Array.isArray(data.actividades) && Array.isArray(localList)) {
+    if (!mockData._studentCatalogBackup) {
+      mockData._studentCatalogBackup = JSON.parse(JSON.stringify(mockData.studentActivities || []));
+    }
+    if (!mockData._sofiaCatalogBackup) {
+      mockData._sofiaCatalogBackup = JSON.parse(JSON.stringify(mockData.sofiaActivities || []));
+    }
+
+    // 1. Filtrar y actualizar actividades locales únicamente con las actividades asignadas en la BD
+    const catalogSource = targetId === 'alu-103' ? mockData._sofiaCatalogBackup : mockData._studentCatalogBackup;
+    if (Array.isArray(data.actividades) && Array.isArray(catalogSource)) {
+      const assignedList = [];
       data.actividades.forEach(dbAct => {
-        let match = localList.find(a =>
+        const dbTitle = (dbAct.titulo || '').toLowerCase();
+        let template = catalogSource.find(a =>
           (dbAct.codigo_frontend && a.id === dbAct.codigo_frontend) ||
-          (dbAct.titulo && a.title.toLowerCase() === dbAct.titulo.toLowerCase())
+          (dbTitle && a.title.toLowerCase() === dbTitle)
         );
-        if (match) {
-          match.dbId = dbAct.actividad_id;
-          match.status = dbAct.estado || 'Pendiente';
-          match.progressPercent = dbAct.progreso !== undefined ? Number(dbAct.progreso) : 0;
-          if (dbAct.calificacion !== null && dbAct.calificacion !== undefined) {
-            const gradeNum = Number(dbAct.calificacion).toFixed(1);
-            match.score = `${gradeNum} / 7.0`;
-            match.gradeValue = Number(gradeNum);
-          } else if (match.status !== 'Entregada') {
-            delete match.score;
-            delete match.gradeValue;
-          }
-          if (match.status === 'Entregada') {
-            match.urgent = false;
-          }
-          if (dbAct.comentarios) {
-            match.comments = dbAct.comentarios;
-          }
+        if (!template) {
+          template = catalogSource[0] || {};
         }
+        const cloned = JSON.parse(JSON.stringify(template));
+        cloned.id = dbAct.codigo_frontend || cloned.id || `act-db-${dbAct.actividad_id}`;
+        cloned.dbId = dbAct.actividad_id;
+        cloned.title = dbAct.titulo || cloned.title;
+        cloned.subject = dbAct.asignatura || cloned.subject;
+        cloned.status = dbAct.estado || 'Pendiente';
+        cloned.progressPercent = dbAct.progreso !== undefined ? Number(dbAct.progreso) : 0;
+        if (dbAct.calificacion !== null && dbAct.calificacion !== undefined) {
+          const gradeNum = Math.round(Number(dbAct.calificacion));
+          cloned.score = `${gradeNum} / 10 pts`;
+          cloned.gradeValue = gradeNum;
+        } else if (cloned.status !== 'Entregada') {
+          delete cloned.score;
+          delete cloned.gradeValue;
+        }
+        if (cloned.status === 'Entregada') {
+          cloned.urgent = false;
+        }
+        if (dbAct.comentarios) {
+          cloned.comments = dbAct.comentarios;
+        }
+        if (dbAct.diagnostico_profesor) {
+          cloned.teacherDiagnosis = dbAct.diagnostico_profesor;
+        } else if (dbAct.comentarios && String(dbAct.comentarios).includes('Se equivocó en:')) {
+          cloned.teacherDiagnosis = String(dbAct.comentarios).substring(String(dbAct.comentarios).indexOf('Se equivocó en:'));
+        } else {
+          delete cloned.teacherDiagnosis;
+        }
+        assignedList.push(cloned);
       });
+
+      if (targetId === 'alu-103') {
+        mockData.sofiaActivities = assignedList;
+      } else {
+        mockData.studentActivities = assignedList;
+      }
     }
 
     // 2. Actualizar métricas de Reportería del estudiante activo
     const studentObj = (mockData.parentStudents || []).find(s => s.id === targetId);
     if (studentObj) {
-      if (data.overall_grade) studentObj.overallGrade = Number(data.overall_grade).toFixed(1);
-      if (data.math_grade) studentObj.mathGrade = Number(data.math_grade).toFixed(1);
+      if (data.overall_grade !== undefined && data.overall_grade !== null) {
+        studentObj.overallGrade = Number(data.overall_grade) > 0 ? Number(data.overall_grade).toFixed(1) : '0';
+      }
+      if (data.math_grade !== undefined && data.math_grade !== null) {
+        studentObj.mathGrade = Number(data.math_grade) > 0 ? Number(data.math_grade).toFixed(1) : '0';
+      }
       if (data.math_status) studentObj.mathStatus = data.math_status;
       if (data.math_tasks) studentObj.mathTasks = data.math_tasks;
-      if (data.language_grade) studentObj.languageGrade = Number(data.language_grade).toFixed(1);
+      if (data.language_grade !== undefined && data.language_grade !== null) {
+        studentObj.languageGrade = Number(data.language_grade) > 0 ? Number(data.language_grade).toFixed(1) : '0';
+      }
       if (data.language_status) studentObj.languageStatus = data.language_status;
       if (data.language_tasks) studentObj.languageTasks = data.language_tasks;
       if (data.completed_activities_month !== undefined) {
@@ -275,14 +463,16 @@ const api = {
         studentObj.pendingTaskTitle = data.next_pending_task.titulo;
         studentObj.pendingTaskStatus = data.next_pending_task.estado;
         if (data.pending_count === 0 && data.in_progress_count === 0) {
-          studentObj.pendingTaskDeadline = "todas las tareas al día";
-          studentObj.pendingTaskPrompt = "Felicitaciones, todas las actividades de la semana fueron completadas.";
+          studentObj.pendingTaskDeadline = data.total_activities === 0 ? "sin tareas asignadas" : "todas las tareas al día";
+          studentObj.pendingTaskPrompt = data.total_activities === 0
+            ? "Aún no hay actividades asignadas por la profesora."
+            : "Felicitaciones, todas las actividades de la semana fueron completadas.";
         }
       }
     }
 
-    // 3. Sincronizar historial de entregas para la tabla de Reportería
-    if (Array.isArray(data.entregas) && data.entregas.length > 0) {
+    // 3. Sincronizar historial de entregas para la tabla de Reportería (incluyendo cuando queda vacío en 0)
+    if (Array.isArray(data.entregas)) {
       const mappedGrades = data.entregas.map(e => ({
         id: e.id,
         actividadId: e.actividad_id,
@@ -309,6 +499,14 @@ const api = {
 
   // 5. Mensajería
   async getConversations(userId = 13) {
+    if (window.firebaseDb) {
+      try {
+        this.isOnline = true;
+        return await firebaseDb.getConversaciones(userId);
+      } catch (err) {
+        console.warn("[Firebase] Error obteniendo conversaciones:", err);
+      }
+    }
     if (this.isOnline) {
       try {
         const res = await fetch(`${this.baseUrl}/mensajeria/conversaciones/usuario/${userId}`, {
@@ -328,6 +526,14 @@ const api = {
   },
 
   async getMessages(conversationId = 1) {
+    if (window.firebaseDb) {
+      try {
+        this.isOnline = true;
+        return await firebaseDb.getMensajes(conversationId);
+      } catch (err) {
+        console.warn("[Firebase] Error obteniendo mensajes:", err);
+      }
+    }
     if (this.isOnline) {
       try {
         const res = await fetch(`${this.baseUrl}/mensajeria/conversacion/${conversationId}/mensajes`, {
@@ -348,6 +554,14 @@ const api = {
 
   async sendMessage(conversationId, senderId, text) {
     const cleanText = this.escapeHtml(text.trim());
+    if (window.firebaseDb) {
+      try {
+        this.isOnline = true;
+        return await firebaseDb.enviarMensaje(conversationId, senderId, cleanText);
+      } catch (err) {
+        console.warn("[Firebase] Error enviando mensaje:", err);
+      }
+    }
     if (this.isOnline) {
       try {
         const res = await fetch(`${this.baseUrl}/mensajeria/mensaje`, {
@@ -418,6 +632,15 @@ const api = {
       clearInterval(this._vadInterval);
       this._vadInterval = null;
     }
+    if (this._speechRec) {
+      try {
+        this._speechRec.onresult = null;
+        this._speechRec.onerror = null;
+        this._speechRec.onend = null;
+        this._speechRec.stop();
+      } catch (e) {}
+      this._speechRec = null;
+    }
     if (this._audioContext) {
       try {
         this._audioContext.close();
@@ -427,19 +650,99 @@ const api = {
     this._analyser = null;
     this._hasSpokenVoice = false;
     this._silenceStartTimestamp = null;
-    if (this.mediaRecorder && this.mediaRecorder.stream) {
+    if (this.mediaRecorder) {
       try {
-        this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
+        this.mediaRecorder.ondataavailable = null;
+        this.mediaRecorder.onstop = null;
+        if (this.mediaRecorder.state && this.mediaRecorder.state !== 'inactive') {
+          this.mediaRecorder.stop();
+        }
+        if (this.mediaRecorder.stream) {
+          this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
+        }
       } catch (e) {}
+      this.mediaRecorder = null;
     }
+    this.isRecordingAudio = false;
   },
 
-  async startVoiceRecording(onSilenceDetected) {
+  async startVoiceRecording(onSilenceDetected, options = {}) {
+    this.stopVoiceRecordingCleanup();
+    this._liveSpeechTranscript = '';
+    const skipBrowserRec = Boolean(options && options.skipBrowserSpeechRec);
+
+    let speechRecStarted = false;
+    if (!skipBrowserRec) {
+      const SpeechRec = (typeof window !== 'undefined') && (window.SpeechRecognition || window.webkitSpeechRecognition);
+      if (SpeechRec) {
+        try {
+          const rec = new SpeechRec();
+          rec.lang = 'es-CL';
+          rec.continuous = true;
+          rec.interimResults = true;
+          let accumulatedFinal = '';
+          let lastFinalIndex = 0;
+
+          rec.onresult = (event) => {
+            let newFinal = '';
+            let currentInterim = '';
+            for (let i = 0; i < event.results.length; i++) {
+              const txt = (event.results[i][0] && event.results[i][0].transcript) ? event.results[i][0].transcript : '';
+              if (event.results[i].isFinal) {
+                if (i >= lastFinalIndex) {
+                  newFinal += ' ' + txt;
+                  lastFinalIndex = i + 1;
+                }
+              } else {
+                currentInterim += ' ' + txt;
+              }
+            }
+            if (newFinal) {
+              accumulatedFinal = (accumulatedFinal + ' ' + newFinal).trim();
+            }
+            const combined = (accumulatedFinal + ' ' + currentInterim).trim();
+            if (combined) {
+              this._liveSpeechTranscript = combined;
+              this._hasSpokenVoice = true;
+              this._silenceStartTimestamp = null;
+              if (typeof onSilenceDetected === 'function') {
+                if (this._speechAutoStopTimer) clearTimeout(this._speechAutoStopTimer);
+                this._speechAutoStopTimer = setTimeout(() => {
+                  if (this.isRecordingAudio) {
+                    onSilenceDetected();
+                  }
+                }, 1450);
+              }
+            }
+          };
+          rec.onerror = (ev) => {
+            console.warn('[WebSpeech STT] Aviso:', ev && ev.error);
+          };
+          rec.onend = () => {
+            if (this.isRecordingAudio && this._speechRec === rec) {
+              try {
+                lastFinalIndex = 0;
+                rec.start();
+              } catch (e) {}
+            }
+          };
+          rec.start();
+          this._speechRec = rec;
+          speechRecStarted = true;
+        } catch (recErr) {
+          console.warn('[WebSpeech STT] No se pudo iniciar reconocimiento del navegador:', recErr);
+        }
+      }
+    }
+
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        if (speechRecStarted) {
+          this.isRecordingAudio = true;
+          return { success: true };
+        }
         return { success: false, error: "Navegador no soporta captura de micrófono" };
       }
-      this.stopVoiceRecordingCleanup();
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -449,15 +752,15 @@ const api = {
         }
       });
       this.audioChunks = [];
-      let options = {};
+      let recOptions = {};
       if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported) {
         if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-          options = { mimeType: 'audio/webm;codecs=opus' };
+          recOptions = { mimeType: 'audio/webm;codecs=opus' };
         } else if (MediaRecorder.isTypeSupported('audio/webm')) {
-          options = { mimeType: 'audio/webm' };
+          recOptions = { mimeType: 'audio/webm' };
         }
       }
-      this.mediaRecorder = new MediaRecorder(stream, options);
+      this.mediaRecorder = new MediaRecorder(stream, recOptions);
       this.mediaRecorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) this.audioChunks.push(e.data);
       };
@@ -480,7 +783,7 @@ const api = {
             this._hasSpokenVoice = false;
             this._silenceStartTimestamp = null;
             const SPEECH_THRESHOLD = 18; // Nivel de volumen mínimo para detectar voz activa
-            const SILENCE_DURATION_MS = 1300; // 1.3s de silencio posterior a haber hablado
+            const SILENCE_DURATION_MS = 1350; // 1.35s de silencio posterior a haber hablado
 
             this._vadInterval = setInterval(() => {
               if (!this.isRecordingAudio || !this._analyser) {
@@ -521,16 +824,55 @@ const api = {
 
       return { success: true };
     } catch (err) {
-      console.warn("[Voz] Error al acceder al micrófono:", err);
+      console.warn("[Voz] Error al acceder al micrófono via getUserMedia:", err);
+      if (speechRecStarted) {
+        this.isRecordingAudio = true;
+        return { success: true };
+      }
+      this.stopVoiceRecordingCleanup();
       return { success: false, error: "Permiso de micrófono denegado o no disponible" };
     }
   },
 
   async stopVoiceRecordingAndTranscribe(language = 'es') {
+    if (this._speechAutoStopTimer) {
+      clearTimeout(this._speechAutoStopTimer);
+      this._speechAutoStopTimer = null;
+    }
+
+    // Dar un breve respiro para que Web Speech API emita los últimos tokens finales
+    if (this._speechRec) {
+      await new Promise(r => setTimeout(r, 250));
+    }
+
+    const activeSpeechRec = this._speechRec;
+    if (activeSpeechRec) {
+      try {
+        activeSpeechRec.onend = null;
+        activeSpeechRec.stop();
+      } catch (e) {}
+    }
+
+    const browserTranscript = (this._liveSpeechTranscript || '').trim();
+
+    if (!this.hasLocalBackend) {
+      this.stopVoiceRecordingCleanup();
+      return {
+        success: true,
+        transcripcion: browserTranscript,
+        transcript: browserTranscript,
+        provider: 'browser-speech-recognition'
+      };
+    }
+
     return new Promise((resolve) => {
       if (!this.mediaRecorder || !this.isRecordingAudio) {
         this.stopVoiceRecordingCleanup();
-        resolve({ success: false, error: "No hay grabación activa" });
+        if (browserTranscript) {
+          resolve({ success: true, transcripcion: browserTranscript, transcript: browserTranscript });
+        } else {
+          resolve({ success: false, error: "No hay grabación activa" });
+        }
         return;
       }
 
@@ -545,10 +887,18 @@ const api = {
             await new Promise(r => setTimeout(r, 200));
             result = await this.transcribeAudio(audioBlob, language);
           }
+          if ((!result || !result.success || !(result.transcripcion || result.transcript || '').trim()) && browserTranscript) {
+            resolve({ success: true, transcripcion: browserTranscript, transcript: browserTranscript });
+            return;
+          }
           resolve(result);
         } catch (err) {
           this.stopVoiceRecordingCleanup();
-          resolve({ success: false, error: "Error procesando archivo de audio" });
+          if (browserTranscript) {
+            resolve({ success: true, transcripcion: browserTranscript, transcript: browserTranscript });
+          } else {
+            resolve({ success: false, error: "Error procesando archivo de audio" });
+          }
         }
       };
 
@@ -556,7 +906,11 @@ const api = {
         this.mediaRecorder.stop();
       } catch (e) {
         this.stopVoiceRecordingCleanup();
-        resolve({ success: false, error: "Error al detener grabador" });
+        if (browserTranscript) {
+          resolve({ success: true, transcripcion: browserTranscript, transcript: browserTranscript });
+        } else {
+          resolve({ success: false, error: "Error al detener grabador" });
+        }
       }
     });
   },
@@ -583,6 +937,16 @@ const api = {
   },
 
   // 7. Sintesis de Voz TTS (Robot Leo)
+  getStaticTtsAudioUrl(text, voiceId) {
+    const clean = (text || '').trim();
+    if (!clean || !window.firebaseDb || typeof window.firebaseDb.sha256 !== 'function') return null;
+    const vid = (voiceId || 'IKne3meq5aSn9XLyUdCD').trim();
+    const raw = `${vid}_${clean}`;
+    const utf8 = unescape(encodeURIComponent(raw));
+    const digest = window.firebaseDb.sha256(utf8);
+    return digest ? `audio_cache/${digest}.mp3` : null;
+  },
+
   getTtsAudioUrl(text, voiceId) {
     var clean = encodeURIComponent((text || '').trim());
     var vid = voiceId ? '&voice_id=' + encodeURIComponent(voiceId) : '';
@@ -591,12 +955,32 @@ const api = {
 
   async preloadTtsAudio(text, voiceId) {
     if (!text || !text.trim()) return null;
-    var cacheKey = (voiceId || 'default') + '::' + text.trim();
+    var cleanText = text.trim();
+    var cacheKey = (voiceId || 'default') + '::' + cleanText;
     if (this._ttsBlobCache[cacheKey]) {
       return this._ttsBlobCache[cacheKey];
     }
+
+    var staticUrl = this.getStaticTtsAudioUrl(cleanText, voiceId);
+    if (staticUrl) {
+      try {
+        var staticRes = await fetch(staticUrl);
+        if (staticRes.ok) {
+          var ct = (staticRes.headers.get('content-type') || '').toLowerCase();
+          var staticBlob = await staticRes.blob();
+          if (ct.includes('audio') || staticBlob.size > 500) {
+            var staticBlobUrl = URL.createObjectURL(staticBlob);
+            this._ttsBlobCache[cacheKey] = staticBlobUrl;
+            return staticBlobUrl;
+          }
+        }
+      } catch (err) {}
+    }
+
+    if (!this.hasLocalBackend) return null;
+
     try {
-      var url = this.getTtsAudioUrl(text, voiceId);
+      var url = this.getTtsAudioUrl(cleanText, voiceId);
       var res = await fetch(url);
       if (res.ok) {
         var blob = await res.blob();
@@ -611,60 +995,150 @@ const api = {
   },
 
   async speakText(text, voiceId, onEndedCallback) {
-    if (!text || !text.trim()) return null;
-    try {
-      this.stopSpeaking();
-      var cacheKey = (voiceId || 'default') + '::' + text.trim();
-      var playUrl = this._ttsBlobCache[cacheKey];
-      if (!playUrl) {
-        playUrl = await this.preloadTtsAudio(text, voiceId);
-      }
-      if (!playUrl) {
-        playUrl = this.getTtsAudioUrl(text, voiceId);
-      }
-      var audio = new Audio(playUrl);
-      this._currentAudio = audio;
-      if (typeof onEndedCallback === 'function') {
-        audio.onended = () => {
-          onEndedCallback();
-        };
-      }
-      await audio.play();
-      return audio;
-    } catch (err) {
-      console.warn("[TTS] Reproduccion de voz:", err);
-      if (typeof onEndedCallback === 'function') {
-        onEndedCallback();
-      }
+    if (!text || !text.trim()) {
+      if (typeof onEndedCallback === 'function') onEndedCallback();
       return null;
     }
+
+    this.stopSpeaking();
+    const mySeq = (this._speakSeq = (this._speakSeq || 0) + 1);
+    const cleanText = text.trim();
+
+    try {
+      var cacheKey = (voiceId || 'default') + '::' + cleanText;
+      var playUrl = this._ttsBlobCache[cacheKey];
+      if (!playUrl) {
+        playUrl = await this.preloadTtsAudio(cleanText, voiceId);
+      }
+      if (mySeq !== this._speakSeq) return null;
+      if (playUrl) {
+        const audioPlayed = await new Promise((resolve) => {
+          var audio = new Audio(playUrl);
+          this._currentAudio = audio;
+          var settled = false;
+          var finishAudio = (ok) => {
+            if (settled) return;
+            settled = true;
+            if (this._currentAudio === audio) {
+              this._currentAudio = null;
+            }
+            if (this._currentSpeakDone === finishAudio) {
+              this._currentSpeakDone = null;
+            }
+            if (ok && mySeq === this._speakSeq && typeof onEndedCallback === 'function') {
+              onEndedCallback();
+            }
+            resolve(ok);
+          };
+          this._currentSpeakDone = () => finishAudio(true);
+
+          audio.onended = () => finishAudio(true);
+          audio.onerror = () => finishAudio(false);
+
+          var playPromise = audio.play();
+          if (playPromise && typeof playPromise.catch === 'function') {
+            playPromise.catch(() => finishAudio(false));
+          }
+        });
+        if (audioPlayed || mySeq !== this._speakSeq) {
+          return this._currentAudio;
+        }
+      }
+    } catch (err) {
+      console.warn("[TTS] Reproduccion de voz cache/backend:", err);
+    }
+
+    // Síntesis de voz nativa del navegador (Web SpeechSynthesis) cuando corre en Firebase Hosting
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      return new Promise((resolve) => {
+        let callbackFired = false;
+        const finishSpeak = (retVal) => {
+          if (callbackFired) return;
+          callbackFired = true;
+          if (this._speakingTimer) {
+            clearTimeout(this._speakingTimer);
+            this._speakingTimer = null;
+          }
+          if (this._currentSpeakDone === finishSpeak) {
+            this._currentSpeakDone = null;
+          }
+          if (mySeq === this._speakSeq && typeof onEndedCallback === 'function') {
+            onEndedCallback();
+          }
+          resolve(retVal || null);
+        };
+        this._currentSpeakDone = finishSpeak;
+
+        try {
+          const synth = window.speechSynthesis;
+          if (synth.speaking || synth.pending) {
+            synth.cancel();
+          }
+          if (synth.paused) {
+            synth.resume();
+          }
+
+          const utter = new SpeechSynthesisUtterance(cleanText);
+          this._currentUtterance = utter;
+          utter.lang = 'es-CL';
+          utter.rate = 0.96;
+          utter.pitch = 1.05;
+
+          const voices = synth.getVoices ? synth.getVoices() : [];
+          const esVoice = voices.find(v => (v.lang || '').toLowerCase() === 'es-cl')
+            || voices.find(v => (v.lang || '').toLowerCase() === 'es-es')
+            || voices.find(v => (v.lang || '').toLowerCase() === 'es-mx')
+            || voices.find(v => (v.lang || '').toLowerCase() === 'es-419')
+            || voices.find(v => (v.lang || '').toLowerCase().startsWith('es'));
+          if (esVoice) utter.voice = esVoice;
+
+          utter.onend = () => finishSpeak(utter);
+          utter.onerror = () => finishSpeak(utter);
+
+          const safetyMs = Math.min(18000, Math.max(2500, cleanText.length * 95));
+          this._speakingTimer = setTimeout(() => finishSpeak(utter), safetyMs);
+
+          synth.speak(utter);
+        } catch (e) {
+          finishSpeak(null);
+        }
+      });
+    }
+
+    if (typeof onEndedCallback === 'function') {
+      onEndedCallback();
+    }
+    return null;
   },
 
   stopSpeaking() {
+    this._speakSeq = (this._speakSeq || 0) + 1;
+    if (this._speakingTimer) {
+      clearTimeout(this._speakingTimer);
+      this._speakingTimer = null;
+    }
     if (this._currentAudio) {
       try {
+        this._currentAudio.onended = null;
+        this._currentAudio.onerror = null;
         this._currentAudio.pause();
         this._currentAudio.currentTime = 0;
       } catch (e) {}
       this._currentAudio = null;
     }
+    this._currentUtterance = null;
+    if (this._currentSpeakDone) {
+      const resolvePrev = this._currentSpeakDone;
+      this._currentSpeakDone = null;
+      try { resolvePrev(null); } catch (e) {}
+    }
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try { window.speechSynthesis.cancel(); } catch (e) {}
+    }
   },
 
   // 8. Evaluador de Respuestas Abiertas por Voz (Comprensión Oral LE01 OA 18 - Retorno Booleano)
   async evaluateStoryAnswerWithAi(payload) {
-    try {
-      const res = await fetch(`${this.baseUrl}/ia/evaluar-respuesta`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify(payload)
-      });
-      if (res.ok) {
-        return await res.json();
-      }
-    } catch (err) {
-      console.warn("[Evaluador Voz] Usando validacion local de respaldo:", err);
-    }
-    // Respaldo local en caso de desconexion
     const spoken = (payload.transcripcion_alumno || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     const keywords = (payload.palabras_clave_respaldo || []).map(k => k.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
     const isCorrect = keywords.some(kw => kw && spoken.includes(kw));
@@ -676,6 +1150,204 @@ const api = {
         : "Escucha nuevamente la pregunta del cuento e inténtalo otra vez con tu voz.",
       transcripcion_evaluada: payload.transcripcion_alumno || ""
     };
+  },
+
+  // 9. Revisión Docente de Actividad con Tiempos por Número y Resumen IA (Cloud Firestore)
+  async getRevisionActividad(cursoId = 3, codigoFrontend = 'act-conteo', alumnoId = null) {
+    if (window.firebaseDb) {
+      try {
+        this.isOnline = true;
+        return await firebaseDb.getRevisionActividad(cursoId, codigoFrontend, alumnoId || 5);
+      } catch (err) {
+        console.warn("[Firebase] Error consultando revisión de actividad:", err);
+      }
+    }
+    try {
+      const q = alumnoId ? `?alumno_id=${encodeURIComponent(alumnoId)}` : '';
+      const res = await fetch(`${this.baseUrl}/actividades/revision/${cursoId}/${encodeURIComponent(codigoFrontend)}${q}`, {
+        headers: this.getHeaders()
+      });
+      if (res.ok) {
+        this.isOnline = true;
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("[API] Error consultando revisión de actividad:", err);
+    }
+    return null;
+  },
+
+  async generarResumenDocenteIa(payload) {
+    if (window.firebaseDb) {
+      this.isOnline = true;
+      return firebaseDb.buildResumenDocenteIa(payload || {});
+    }
+    try {
+      const res = await fetch(`${this.baseUrl}/ia/resumen-actividad-docente`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        this.isOnline = true;
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("[API] Error generando resumen IA docente:", err);
+    }
+    return null;
+  },
+
+  async enviarResumenApoderado(payload) {
+    if (window.firebaseDb) {
+      try {
+        this.isOnline = true;
+        return await firebaseDb.enviarResumenApoderado(payload);
+      } catch (err) {
+        console.warn("[Firebase] Error enviando resumen al apoderado:", err);
+      }
+    }
+    try {
+      const res = await fetch(`${this.baseUrl}/mensajeria/enviar-resumen-apoderado`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        this.isOnline = true;
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("[API] Error enviando resumen al apoderado:", err);
+    }
+    return null;
+  },
+
+  async reiniciarPuntajeActividad(payload) {
+    if (window.firebaseDb) {
+      try {
+        this.isOnline = true;
+        return await firebaseDb.reiniciarPuntajeActividad(payload);
+      } catch (err) {
+        console.warn("[Firebase] Error reiniciando puntaje:", err);
+      }
+    }
+    try {
+      const res = await fetch(`${this.baseUrl}/actividades/reiniciar-puntaje`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        this.isOnline = true;
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("[API] Error reiniciando puntaje:", err);
+    }
+    return null;
+  },
+
+  // 10. Gestión de Alertas y Notificaciones Oficiales (Cloud Firestore)
+  async getAlertasUsuario(usuarioId = 13) {
+    if (window.firebaseDb) {
+      try {
+        this.isOnline = true;
+        return await firebaseDb.getAlertasUsuario(usuarioId);
+      } catch (err) {
+        console.warn("[Firebase] Error obteniendo alertas:", err);
+      }
+    }
+    try {
+      const res = await fetch(`${this.baseUrl}/alertas/usuario/${usuarioId}`, {
+        headers: this.getHeaders()
+      });
+      if (res.ok) {
+        this.isOnline = true;
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("[API] Error obteniendo alertas:", err);
+    }
+    return [];
+  },
+
+  async emitirAlerta(payload) {
+    if (window.firebaseDb) {
+      try {
+        this.isOnline = true;
+        return await firebaseDb.emitirAlerta(payload);
+      } catch (err) {
+        console.warn("[Firebase] Error emitiendo alerta:", err);
+      }
+    }
+    try {
+      const res = await fetch(`${this.baseUrl}/alertas/`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({
+          usuario_id: payload.usuario_id || 13,
+          tipo: payload.tipo || 'urgente',
+          titulo: payload.titulo || '',
+          contenido: payload.contenido || ''
+        })
+      });
+      if (res.ok) {
+        this.isOnline = true;
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("[API] Error emitiendo alerta:", err);
+    }
+    return null;
+  },
+
+  async marcarAlertaLeida(notificacionId) {
+    if (window.firebaseDb) {
+      try {
+        this.isOnline = true;
+        return await firebaseDb.marcarAlertaLeida(notificacionId);
+      } catch (err) {
+        console.warn("[Firebase] Error marcando alerta leída:", err);
+      }
+    }
+    try {
+      const res = await fetch(`${this.baseUrl}/alertas/${notificacionId}/leer`, {
+        method: 'PUT',
+        headers: this.getHeaders()
+      });
+      if (res.ok) {
+        this.isOnline = true;
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("[API] Error marcando alerta leída:", err);
+    }
+    return null;
+  },
+
+  async limpiarAlertas() {
+    if (window.firebaseDb) {
+      try {
+        this.isOnline = true;
+        return await firebaseDb.limpiarAlertas();
+      } catch (err) {
+        console.warn("[Firebase] Error limpiando alertas:", err);
+      }
+    }
+    try {
+      const res = await fetch(`${this.baseUrl}/alertas/limpiar`, {
+        method: 'DELETE',
+        headers: this.getHeaders()
+      });
+      if (res.ok) {
+        this.isOnline = true;
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("[API] Error limpiando alertas:", err);
+    }
+    return null;
   }
 };
 

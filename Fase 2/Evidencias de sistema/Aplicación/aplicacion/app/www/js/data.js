@@ -1,33 +1,38 @@
 // Mock Data for School Management & Learning Platform (Enfocado en 1° y 2° Básico - Chile)
 // Materias exclusivas: Lenguaje y Comunicación / Matemáticas
 const mockData = {
-  // Usuarios autorizados para el Login Demo
+  // Perfiles institucionales autorizados (Sin contraseñas en texto plano; verificación por hash SHA-256)
   demoUsers: {
     admin: {
+      id: 11,
       email: "admin@sanandres.cl",
-      password: "admin123",
+      password_hash: "32e731c032b048d5ddd6b78b45d1b6fa7caaf19fa44ee2bf670670fdf2c1d846",
       role: "admin",
       roleLabel: "Administrador",
       name: "Rodrigo Valenzuela Lagos",
       title: "Director Académico",
       course: "Colegio San Andrés",
       avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80",
+      defaultAvatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80",
       defaultView: "asignar"
     },
     profesora: {
+      id: 12,
       email: "profesora@sanandres.cl",
-      password: "profe123",
+      password_hash: "14557ccf7d5ccf750ef148348cc38b1ec856053a99d0af1c6d1eff7008b617ff",
       role: "profesora",
       roleLabel: "Profesora",
       name: "Marcela Soto Valenzuela",
       title: "Profesora Jefe 1° Básico B",
       course: "1° Básico B",
       avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80",
+      defaultAvatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80",
       defaultView: "asignar"
     },
     apoderado: {
+      id: 13,
       email: "apoderado@sanandres.cl",
-      password: "apoderado123",
+      password_hash: "bd54c5725b5bd050a26dbc341ce246a277adb631109624f42efc173a8adb7347",
       role: "apoderado",
       roleLabel: "Apoderado",
       name: "Carolina Tapia Morales",
@@ -35,17 +40,20 @@ const mockData = {
       course: "1° Básico B & 2° Básico A",
       studentName: "Mateo & Sofía González",
       avatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80",
+      defaultAvatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80",
       defaultView: "reporteria"
     },
     alumno: {
+      id: 14,
       email: "alumno@sanandres.cl",
-      password: "alumno123",
+      password_hash: "6d31a4297adfed2533547048e7fb0d7a4768262520bb7ed63fa71bb7e64c907d",
       role: "alumno",
       roleLabel: "Alumno",
       name: "Mateo González Tapia",
       title: "Estudiante 1° Básico B",
       course: "1° Básico B",
       avatar: "https://images.unsplash.com/photo-1543332164-6e82f355badc?w=150&auto=format&fit=crop&q=80",
+      defaultAvatar: "https://images.unsplash.com/photo-1543332164-6e82f355badc?w=150&auto=format&fit=crop&q=80",
       defaultView: "actividades"
     }
   },
@@ -60,25 +68,25 @@ const mockData = {
       ageRange: "6-7 años",
       school: "Colegio San Andrés de Las Condes",
       avatar: "https://images.unsplash.com/photo-1543332164-6e82f355badc?w=150&auto=format&fit=crop&q=80",
-      overallGrade: 6.6,
-      completionRate: 90,
+      overallGrade: 0,
+      completionRate: 0,
       expectedProgress: 80,
       totalCourseWeeks: 36,
       currentWeek: 28,
-      avgTimePerActivityMinutes: 14,
-      completedActivitiesMonth: 10,
-      diagnosisText: "Mateo va muy bien este semestre. Tiene un promedio general de 6.6 (la nota de aprobación es 4.0). Gracias a que las actividades le leen las preguntas en voz alta con Robot Leo, Mateo ha completado el 90% de sus tareas a tiempo y sin la frustración de tener que leer textos largos solo.",
-      pendingTaskTitle: "Misión Conteo Mágico: Cuenta del 1 al 10 con Robot Leo",
-      pendingTaskDeadline: "hoy a las 19:00",
-      pendingTaskPrompt: "Robot Leo escuchará tu voz mientras cuentas del 1 al 10.",
-      mathGrade: 6.8,
-      mathStatus: "Excelente",
+      avgTimePerActivityMinutes: 0,
+      completedActivitiesMonth: 0,
+      diagnosisText: "Mateo aún no registra actividades entregadas ni puntajes en este periodo (Puntaje actual: 0 / 10). Cuando la profesora asigne una actividad y Mateo la complete con Robot Leo, verás aquí su puntaje actualizado.",
+      pendingTaskTitle: "Sin actividades asignadas",
+      pendingTaskDeadline: "-",
+      pendingTaskPrompt: "Esperando asignación de la profesora.",
+      mathGrade: 0,
+      mathStatus: "Sin entregas",
       mathDesc: "Conteo lúdico, sumas y restas hasta el 10 con voz",
-      mathTasks: "4 de 4 tareas al día",
-      languageGrade: 6.5,
-      languageStatus: "Muy Bien",
+      mathTasks: "0 de 0 tareas asignadas",
+      languageGrade: 0,
+      languageStatus: "Sin entregas",
       languageDesc: "Lectoescritura inicial, vocales y fonética auditiva",
-      languageTasks: "4 de 4 tareas al día",
+      languageTasks: "0 de 0 tareas asignadas",
       guidanceText: "Las dos materias troncales (Lenguaje y Matemáticas) cuentan con apoyo de voz para que el niño no se canse leyendo textos largos. Se recomienda practicar 15 minutos diarios con Robot Leo.",
       teacherName: "Tía Marcela Soto (Profesora Jefe 1° Básico B)"
     },
@@ -90,25 +98,25 @@ const mockData = {
       ageRange: "7-8 años",
       school: "Colegio San Andrés de Las Condes",
       avatar: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80",
-      overallGrade: 6.5,
-      completionRate: 85,
+      overallGrade: 0,
+      completionRate: 0,
       expectedProgress: 80,
       totalCourseWeeks: 36,
       currentWeek: 28,
-      avgTimePerActivityMinutes: 16,
-      completedActivitiesMonth: 9,
-      diagnosisText: "Sofía muestra un progreso constante en 2° básico con un promedio general de 6.5. Ha consolidado la lectura fluida de oraciones y está afianzando el cálculo mental con reservas y tablas iniciales del 2 y del 5.",
-      pendingTaskTitle: "Fábulas Clásicas: El Conejo y las Uvas (Comprensión con Voz)",
-      pendingTaskDeadline: "jueves a las 17:00",
-      pendingTaskPrompt: "Robot Leo le ayudará a identificar la moraleja mediante preguntas habladas.",
-      mathGrade: 6.4,
-      mathStatus: "Muy Bien",
+      avgTimePerActivityMinutes: 0,
+      completedActivitiesMonth: 0,
+      diagnosisText: "Sofía aún no registra actividades entregadas ni puntajes en este periodo (Puntaje actual: 0 / 10).",
+      pendingTaskTitle: "Sin actividades asignadas",
+      pendingTaskDeadline: "-",
+      pendingTaskPrompt: "Esperando asignación del profesor.",
+      mathGrade: 0,
+      mathStatus: "Sin entregas",
       mathDesc: "Sumas con reserva y cálculo mental hasta el 50",
-      mathTasks: "3 de 4 tareas al día",
-      languageGrade: 6.7,
-      languageStatus: "Excelente",
+      mathTasks: "0 de 0 tareas asignadas",
+      languageGrade: 0,
+      languageStatus: "Sin entregas",
       languageDesc: "Comprensión lectora fluida, puntuación y fábulas",
-      languageTasks: "4 de 4 tareas al día",
+      languageTasks: "0 de 0 tareas asignadas",
       guidanceText: "En 2° básico es ideal fomentar la lectura compartida de 15 minutos en el hogar y pedirle a Sofía que explique las conclusiones con sus propias palabras.",
       teacherName: "Profesor Andrés Morales (Profesor Jefe 2° Básico A)"
     }
@@ -134,16 +142,16 @@ const mockData = {
     course: "1° Básico B",
     school: "Colegio San Andrés de Las Condes",
     avatar: "https://images.unsplash.com/photo-1543332164-6e82f355badc?w=150&auto=format&fit=crop&q=80",
-    overallGrade: 6.6,
-    completionRate: 90,
+    overallGrade: 0,
+    completionRate: 0,
     expectedProgress: 80,
     totalCourseWeeks: 36,
     currentWeek: 28,
-    avgTimePerActivityMinutes: 14,
+    avgTimePerActivityMinutes: 0,
     questionsStats: {
-      correct: 82,
-      incorrect: 10,
-      inReview: 4
+      correct: 0,
+      incorrect: 0,
+      inReview: 0
     }
   },
 
@@ -160,73 +168,25 @@ const mockData = {
     school: "Colegio San Andrés",
     email: "profesora@sanandres.cl",
     courses: [
-      { id: "c1", name: "1° Básico B", studentsCount: 28, pendingAlerts: 1 },
+      { id: "c1", name: "1° Básico B", studentsCount: 28, pendingAlerts: 0 },
       { id: "c2", name: "1° Básico A", studentsCount: 29, pendingAlerts: 0 },
-      { id: "c3", name: "2° Básico A", studentsCount: 30, pendingAlerts: 2 }
+      { id: "c3", name: "2° Básico A", studentsCount: 30, pendingAlerts: 0 }
     ]
   },
 
-  // Calificaciones históricas de Mateo (1° Básico)
-  gradeHistory: [
-    { subject: "Matemáticas", activity: "Conteo y Sumas Mágicas hasta el 10 (con Voz IA)", date: "04 Sep 2026", grade: 6.8, timeMinutes: 12, correct: 10, total: 10 },
-    { subject: "Lenguaje y Comunicación", activity: "Aventura de Vocales y Primeras Sílabas (M, P, L)", date: "30 Ago 2026", grade: 6.4, timeMinutes: 15, correct: 9, total: 10 },
-    { subject: "Matemáticas", activity: "Resolución de Problemas con Monedas y Figuras", date: "24 Ago 2026", grade: 6.7, timeMinutes: 14, correct: 9, total: 10 },
-    { subject: "Lenguaje y Comunicación", activity: "Comprensión Auditiva de Cuentos con Robot Leo", date: "18 Ago 2026", grade: 6.5, timeMinutes: 16, correct: 8, total: 10 }
-  ],
+  // Puntajes históricos de Mateo (1° Básico - Escala 1 al 10)
+  gradeHistory: [],
 
-  // Calificaciones históricas de Sofía (2° Básico)
-  sofiaGradeHistory: [
-    { subject: "Lenguaje y Comunicación", activity: "Lectura Fluida: Fábulas y Moralejas (con Voz IA)", date: "05 Sep 2026", grade: 6.7, timeMinutes: 14, correct: 10, total: 10 },
-    { subject: "Matemáticas", activity: "Multiplicación Inicial: Tablas del 2 y del 5", date: "31 Ago 2026", grade: 6.4, timeMinutes: 16, correct: 9, total: 10 },
-    { subject: "Lenguaje y Comunicación", activity: "Uso de Mayúsculas, Signos y Puntuación", date: "23 Ago 2026", grade: 6.6, timeMinutes: 15, correct: 9, total: 10 },
-    { subject: "Matemáticas", activity: "Sumas con Reserva hasta el 50", date: "16 Ago 2026", grade: 6.3, timeMinutes: 18, correct: 8, total: 10 }
-  ],
+  // Puntajes históricos de Sofía (2° Básico - Escala 1 al 10)
+  sofiaGradeHistory: [],
 
-  // Alertas profesor para 1° y 2° Básico
-  alertsList: [
-    {
-      id: "alt-1",
-      courseId: "c1",
-      courseName: "1° Básico B",
-      type: "Urgente",
-      typeColor: "red",
-      title: "Uso de audífonos para actividades de Voz IA en el aula",
-      description: "Estimados apoderados: Mañana realizaremos la actividad interactiva de sumas con el Agente de Voz IA. Por favor enviar a los niños con sus audífonos marcados con su nombre.",
-      date: "06 Sep 2026 - 10:15 hrs",
-      readCount: 26,
-      totalCount: 28,
-      sender: "Tía Marcela Soto"
-    },
-    {
-      id: "alt-2",
-      courseId: "c1",
-      courseName: "1° Básico B",
-      type: "Académica",
-      typeColor: "blue",
-      title: "Inicio del proceso de lectura: Sílaba de la letra 'S'",
-      description: "Esta semana reforzaremos la letra 'S'. Los niños tienen habilitada una actividad guiada por voz donde la IA les leerá palabras y ellos deberán identificar el sonido inicial.",
-      date: "02 Sep 2026 - 15:30 hrs",
-      readCount: 27,
-      totalCount: 28,
-      sender: "Tía Marcela Soto"
-    },
-    {
-      id: "alt-3",
-      courseId: "c3",
-      courseName: "2° Básico A",
-      type: "Citación",
-      typeColor: "amber",
-      title: "Reunión de Apoderados: Plan Lector y Avance en Matemáticas",
-      description: "Reunión presencial para mostrar los informes de comprensión lectora asistida por voz y entrega de diplomas de avance.",
-      date: "28 Ago 2026 - 09:00 hrs",
-      readCount: 30,
-      totalCount: 30,
-      sender: "Dirección de Ciclo Inicial"
-    }
-  ],
+  // Alertas profesor para 1° y 2° Básico (Sincronizadas con MySQL)
+  alertsList: [],
 
-  // Actividades Alumno 1° Básico (Mateo) - 4 Actividades Oficiales Mineduc (2 Matemáticas + 2 Lenguaje)
-  studentActivities: [
+  // Actividades Alumno 1° Básico (Mateo) - Se cargan desde MySQL (0 por defecto)
+  studentActivities: [],
+  sofiaActivities: [],
+  studentActivitiesTemplates: [
     {
       id: "act-conteo",
       subject: "Matemáticas",
@@ -524,12 +484,12 @@ const mockData = {
       voiceCharacter: "Robot Leo",
       voiceAIPrompt: "Sigue los saltos de 2 en 2 y de 5 en 5 al ritmo de la música diciendo cada resultado en voz alta",
       description: "Juego rítmico de multiplicación inicial (Tablas del 2 y del 5). Salta por la recta numérica siguiendo el pulso y di los múltiplos a tiempo.",
-      disclaimerTtsText: "¡Hola! En Salta al Ritmo vamos a multiplicar dando saltos de dos en dos y de cinco en cinco. Di cada número en voz alta apenas brille en la pantalla. Toca espacio para empezar."
+      disclaimerTtsText: "¡Hola! En Salta al Ritmo vamos a multiplicar dando saltos de dos en dos y de cinco en cinco. Di cada número en voz alta apenas brille en la pantalla. Toca el botón para empezar."
     }
   ],
 
-  // Actividades Alumno 2° Básico (Sofía)
-  sofiaActivities: [
+  // Plantillas de Actividades Alumno 2° Básico (Sofía)
+  sofiaActivitiesTemplates: [
     {
       id: "act-sofia-2",
       subject: "Matemáticas",
@@ -610,8 +570,8 @@ const mockData = {
       difficulty: "2° Básico • LE02 OA 21",
       dueDate: "18 Sep 2026",
       urgent: false,
-      status: "En progreso",
-      progressPercent: 60,
+      status: "Pendiente",
+      progressPercent: 0,
       questionsCount: 5,
       estimatedTime: "10 min",
       voiceAIDefault: true,
@@ -625,10 +585,10 @@ const mockData = {
       activityType: "addition",
       title: "Mercado de Robot Leo: Sumas hasta el 50",
       difficulty: "2° Básico • MA02 OA 09",
-      dueDate: "Entregada el 01 Sep",
+      dueDate: "20 Sep 2026",
       urgent: false,
-      status: "Entregada",
-      score: "6.4 / 7.0",
+      status: "Pendiente",
+      score: null,
       questionsCount: 5,
       estimatedTime: "12 min",
       voiceAIDefault: true,
@@ -712,8 +672,8 @@ const mockData = {
       name: "1° Básico B - Canal Oficial Apoderados",
       type: "Canal",
       unread: 0,
-      lastMsg: "Recordar enviar delantal y audífonos para la actividad de mañana.",
-      lastTime: "11:42",
+      lastMsg: "Sin mensajes todavía",
+      lastTime: "-",
       avatarBg: "bg-blue-600",
       initials: "1B"
     },
@@ -721,9 +681,9 @@ const mockData = {
       id: "ch-2",
       name: "Tía Marcela (Profesora Jefe)",
       type: "Directo",
-      unread: 1,
-      lastMsg: "Hola Carolina, Mateo respondió muy contento las sumas por voz...",
-      lastTime: "Ayer",
+      unread: 0,
+      lastMsg: "Sin mensajes todavía",
+      lastTime: "-",
       avatarBg: "bg-emerald-600",
       initials: "TM"
     },
@@ -732,37 +692,14 @@ const mockData = {
       name: "Coordinación Primer Ciclo Básico",
       type: "Oficial",
       unread: 0,
-      lastMsg: "Circular N° 4: Horarios de apoyo en Lenguaje y Matemáticas.",
-      lastTime: "01 Sep",
+      lastMsg: "Sin mensajes todavía",
+      lastTime: "-",
       avatarBg: "bg-purple-600",
       initials: "PC"
     }
   ],
 
-  activeMessages: [
-    {
-      sender: "Tía Marcela Soto",
-      role: "Profesora Jefe 1° Básico B",
-      time: "Ayer a las 16:10",
-      text: "Estimada Carolina, buenas tardes. Le comento que Mateo hoy realizó su primera actividad con el Agente de Voz IA en la sala. Como él aún está afianzando la lectura de textos largos, le ayudó muchísimo que el robot le leyera los problemas hablados con las frutas.",
-      isSelf: false
-    },
-    {
-      sender: "Carolina Tapia",
-      role: "Apoderada",
-      time: "Ayer a las 17:05",
-      text: "Excelente noticia Tía Marcela. En la casa Mateo me contó muy entusiasmado que Robot Leo le hizo preguntas y que él le respondió hablando. Nos da mucha tranquilidad saber que no se frustra tratando de leer enunciados difíciles.",
-      isSelf: true
-    },
-    {
-      sender: "Tía Marcela Soto",
-      role: "Profesora Jefe 1° Básico B",
-      time: "Ayer a las 17:18",
-      text: "Así es, esa es la meta de la IA por voz en 1° básico. Mañana continuaremos con la actividad de sumas y la próxima semana con la letra S. Saludos cordiales.",
-      isSelf: false,
-      readStatus: "Visto por la profesora"
-    }
-  ]
+  activeMessages: []
 };
 
 window.mockData = mockData;

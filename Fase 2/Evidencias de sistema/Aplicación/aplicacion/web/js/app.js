@@ -27,17 +27,84 @@ const app = {
   completedStepsCount: 0,
   isCurrentActivityFinished: false,
   isRecordingVoice: false,
+  isProfilePhotoModalOpen: false,
+  _photoModalError: '',
+  _photoModalStatus: '',
   _keyboardBound: false,
-  disclaimerAndInstructionsTtsText: 'Hola. Antes de comenzar, recuerda cuidar el ruido ambiente: busca un lugar tranquilo, apaga la musica o el televisor, y habla fuerte y claro cerca del microfono. En este reto de Cuenta al Ritmo, los numeros apareceran uno por uno y debes decirlos en voz alta en espanol siguiendo el compas. Presiona la barra espaciadora nuevamente para iniciar la actividad.',
+  disclaimerAndInstructionsTtsText: 'Hola. Antes de comenzar, recuerda cuidar el ruido ambiente: busca un lugar tranquilo, apaga la musica o el televisor, y habla fuerte y claro cerca del microfono. En este reto de Cuenta al Ritmo, los numeros apareceran uno por uno y debes decirlos en voz alta en espanol siguiendo el compas. Toca el boton para iniciar la actividad.',
+
+  getAllowedViewsForRole(role) {
+    switch (role) {
+      case 'alumno':
+        return ['actividades', 'mensajeria'];
+      case 'apoderado':
+        return ['reporteria', 'actividades', 'alertas', 'mensajeria'];
+      case 'profesora':
+        return ['asignar', 'alertas', 'mensajeria', 'reporteria'];
+      case 'admin':
+        return ['asignar', 'alertas', 'mensajeria', 'reporteria', 'actividades'];
+      default:
+        return ['reporteria', 'actividades', 'alertas', 'mensajeria'];
+    }
+  },
+
+  getDefaultViewForRole(role) {
+    switch (role) {
+      case 'alumno':
+        return 'actividades';
+      case 'apoderado':
+        return 'reporteria';
+      case 'profesora':
+      case 'admin':
+        return 'asignar';
+      default:
+        return 'actividades';
+    }
+  },
+
+  ensureValidViewForCurrentUser() {
+    if (!this.currentUser) return;
+    const role = this.currentUser.role || 'apoderado';
+    const allowed = this.getAllowedViewsForRole(role);
+    if (!allowed.includes(this.currentView)) {
+      this.currentView = this.getDefaultViewForRole(role);
+      if (window.location.hash.replace('#', '') !== this.currentView) {
+        window.location.hash = this.currentView;
+      }
+      if (window.asignarView) {
+        asignarView.activeReviewData = null;
+      }
+    }
+  },
 
   init() {
     document.documentElement.setAttribute('data-theme', this.currentTheme);
 
-    // Restaurar sesion persistente si existe
+    // Restaurar sesion aislada por pestaña (sessionStorage primario para evitar colisión entre pestañas)
     try {
-      const savedUser = localStorage.getItem('educonnect_web_session_user');
-      if (savedUser) {
-        this.currentUser = JSON.parse(savedUser);
+      const tabUser = sessionStorage.getItem('educonnect_web_session_user');
+      if (tabUser) {
+        this.currentUser = JSON.parse(tabUser);
+      } else {
+        const fallbackUser = localStorage.getItem('educonnect_web_session_user');
+        if (fallbackUser) {
+          this.currentUser = JSON.parse(fallbackUser);
+          sessionStorage.setItem('educonnect_web_session_user', fallbackUser);
+        }
+      }
+      if (this.currentUser) {
+        const defUser = window.mockData && mockData.demoUsers ? mockData.demoUsers[this.currentUser.role] : null;
+        if (!this.currentUser.defaultAvatar && defUser) {
+          this.currentUser.defaultAvatar = defUser.defaultAvatar || defUser.avatar;
+        }
+        if (window.firebaseDb && firebaseDb.getCustomAvatar) {
+          const customAv = firebaseDb.getCustomAvatar(this.currentUser.id);
+          if (customAv) {
+            this.currentUser.avatar = customAv;
+          } else if (!this.currentUser.avatar && this.currentUser.defaultAvatar) {
+            this.currentUser.avatar = this.currentUser.defaultAvatar;
+          }
+        }
       }
     } catch (e) {}
 
@@ -45,6 +112,24 @@ const app = {
     if (['reporteria', 'alertas', 'actividades', 'asignar', 'mensajeria'].includes(hash)) {
       this.currentView = hash;
     }
+
+    this.ensureValidViewForCurrentUser();
+
+    window.addEventListener('hashchange', () => {
+      if (!this.currentUser) return;
+      const newHash = window.location.hash.replace('#', '');
+      if (['reporteria', 'alertas', 'actividades', 'asignar', 'mensajeria'].includes(newHash)) {
+        const allowed = this.getAllowedViewsForRole(this.currentUser.role);
+        if (allowed.includes(newHash)) {
+          if (this.currentView !== newHash) {
+            this.setView(newHash);
+          }
+        } else {
+          this.ensureValidViewForCurrentUser();
+          this.render();
+        }
+      }
+    });
 
     if (window.api) {
       api.checkHealth().then(() => {
@@ -251,7 +336,7 @@ const app = {
     }
   },
 
-  async persistCurrentActivityState(estado, progreso, calificacion = null, comentarios = null) {
+  async persistCurrentActivityState(estado, progreso, calificacion = null, comentarios = null, erroresConteo = null, detalleRespuestas = null) {
     const student = (window.mockData && mockData.getSelectedStudent) ? mockData.getSelectedStudent() : { id: 'alu-102' };
     const studentId = student.id || 'alu-102';
     const act = this.getActiveActivityObject();
@@ -266,16 +351,23 @@ const app = {
         actObj.status = estado;
         actObj.progressPercent = progreso;
         if (estado === 'Entregada') {
-          const gradeVal = calificacion !== null ? Number(calificacion).toFixed(1) : '7.0';
-          actObj.score = `${gradeVal} / 7.0`;
-          actObj.gradeValue = Number(gradeVal);
+          const scoreNum = calificacion !== null ? Math.round(Number(calificacion)) : 10;
+          actObj.score = `${scoreNum} / 10 pts`;
+          actObj.gradeValue = scoreNum;
           actObj.urgent = false;
         }
         if (comentarios) {
           actObj.comments = comentarios;
+          if (comentarios.includes('Se equivocó en:')) {
+            actObj.teacherDiagnosis = comentarios;
+          }
         }
       }
     }
+
+    const detailsToSend = Array.isArray(detalleRespuestas)
+      ? detalleRespuestas
+      : (Array.isArray(this.stepResponseDetails) && this.stepResponseDetails.length > 0 ? this.stepResponseDetails : undefined);
 
     const apiClient = window.api || (typeof api !== 'undefined' ? api : null);
     if (apiClient && apiClient.updateActivityState) {
@@ -288,6 +380,8 @@ const app = {
         progreso: progreso,
         calificacion: calificacion,
         comentarios: comentarios,
+        errores_conteo: Array.isArray(erroresConteo) ? erroresConteo : undefined,
+        detalle_respuestas: detailsToSend,
         tiempo_minutos: 8
       });
       if (apiClient.syncStudentDataFromDb) {
@@ -356,7 +450,26 @@ const app = {
     if (finishText) {
       finishText.textContent = 'Guardar y Salir';
     }
+    this.updateMicSurfaceGradient(false);
     if (window.lucide) lucide.createIcons();
+  },
+
+  updateMicSurfaceGradient(isActive) {
+    const surface = document.getElementById('counting-activity-surface');
+    const card = document.getElementById('voice-action-card');
+    if (surface) {
+      surface.className = isActive
+        ? 'px-5 py-3.5 space-y-2.5 flex-1 bg-gradient-to-b from-sky-200/85 via-blue-50/70 to-white transition-all duration-300'
+        : 'px-5 py-3.5 space-y-2.5 flex-1 bg-gradient-to-b from-blue-50/70 via-slate-50/50 to-white transition-all duration-300';
+    }
+    if (card) {
+      const act = this.getActiveActivityObject();
+      const type = (act && act.activityType) ? act.activityType : 'counting';
+      const hideClass = (type === 'counting' || type === 'skip_counting') ? 'hidden' : 'flex';
+      card.className = isActive
+        ? `p-3 rounded-2xl bg-gradient-to-b from-sky-100/90 via-blue-50/50 to-white border border-sky-300 ring-2 ring-sky-200/70 shadow-sm flex-col gap-2.5 transition-all duration-300 ${hideClass}`
+        : `p-3 rounded-2xl bg-white border border-slate-200 shadow-2xs flex-col gap-2.5 transition-all duration-300 ${hideClass}`;
+    }
   },
 
   async completeAndCloseVoiceModal() {
@@ -366,9 +479,15 @@ const app = {
     const progressInfo = this.getActivityProgressSummary();
 
     if (isCompleted) {
+      const mistakesList = Array.isArray(this.countingMistakes) ? this.countingMistakes : [];
+      const finalScore = Math.max(1, 10 - mistakesList.length);
       const commentByType = {
-        counting: 'Actividad Cuenta al Ritmo en español completada con éxito (MA01 OA 01).',
-        skip_counting: 'Actividad Salta al Ritmo: Multiplicando por 2 y por 5 completada con éxito (MA02 OA 11).',
+        counting: mistakesList.length > 0
+          ? `Conteo del 1 al 10 completado. Se equivocó en: ${mistakesList.join(', ')}`
+          : 'Conteo del 1 al 10 completado sin equivocaciones.',
+        skip_counting: mistakesList.length > 0
+          ? `Actividad Salta al Ritmo completada. Se equivocó en: ${mistakesList.join(', ')}`
+          : 'Actividad Salta al Ritmo: Multiplicando por 2 y por 5 completada con éxito (MA02 OA 11).',
         addition: 'Escalera de Sumas con los 5 peldaños resueltos correctamente (MA01 OA 09).',
         phonological: 'Aplaude las Sílabas y Caza de Sonidos completada en las 5 palabras (LE01 OA 03).',
         story_comprehension: 'Rompecabezas de comprensión oral Detective de Cuentos completado por voz (LE01 OA 18).'
@@ -376,8 +495,9 @@ const app = {
       await this.persistCurrentActivityState(
         'Entregada',
         100,
-        7.0,
-        commentByType[type] || 'Actividad completada correctamente con voz.'
+        finalScore,
+        commentByType[type] || 'Actividad completada correctamente con voz.',
+        mistakesList
       );
     } else if (progressInfo.percent > 0) {
       await this.persistCurrentActivityState(
@@ -395,14 +515,25 @@ const app = {
   login(user) {
     this.currentUser = user;
     try {
-      localStorage.setItem('educonnect_web_session_user', JSON.stringify(user));
+      sessionStorage.setItem('educonnect_web_session_user', JSON.stringify(user));
     } catch (e) {}
-    this.currentView = user.defaultView || 'actividades';
+    this.currentView = user.defaultView || this.getDefaultViewForRole(user.role);
+    this.ensureValidViewForCurrentUser();
+    if (window.asignarView) {
+      asignarView.activeReviewData = null;
+      asignarView.reviewMessageDraft = undefined;
+      asignarView.reviewSentSuccess = false;
+    }
     if (window.mensajeriaView) {
       mensajeriaView.stopPolling();
       mensajeriaView.hasLoaded = false;
+      mensajeriaView.currentUserId = user.id;
       mensajeriaView.conversations = [];
       mensajeriaView.messages = [];
+    }
+    if (window.alertasView) {
+      alertasView.stopPolling();
+      alertasView.hasLoaded = false;
     }
     if (window.api && api.syncStudentDataFromDb) {
       api.syncStudentDataFromDb().then(() => {
@@ -417,16 +548,27 @@ const app = {
   logout() {
     this.currentUser = null;
     try {
+      sessionStorage.removeItem('educonnect_web_session_user');
       localStorage.removeItem('educonnect_web_session_user');
     } catch (e) {}
     if (window.api) {
       api.logout();
     }
+    if (window.asignarView) {
+      asignarView.activeReviewData = null;
+      asignarView.reviewMessageDraft = undefined;
+      asignarView.reviewSentSuccess = false;
+    }
     if (window.mensajeriaView) {
       mensajeriaView.stopPolling();
       mensajeriaView.hasLoaded = false;
+      mensajeriaView.currentUserId = null;
       mensajeriaView.conversations = [];
       mensajeriaView.messages = [];
+    }
+    if (window.alertasView) {
+      alertasView.stopPolling();
+      alertasView.hasLoaded = false;
     }
     window.location.hash = '';
     this.render();
@@ -440,16 +582,29 @@ const app = {
   },
 
   setView(viewId) {
+    if (this.currentUser) {
+      const allowed = this.getAllowedViewsForRole(this.currentUser.role);
+      if (!allowed.includes(viewId)) {
+        viewId = this.getDefaultViewForRole(this.currentUser.role);
+      }
+    }
     this.currentView = viewId;
     window.location.hash = viewId;
     if (viewId === 'mensajeria' && window.mensajeriaView) {
-      mensajeriaView.initData().then(() => {
+      if (window.alertasView) alertasView.stopPolling();
+      mensajeriaView.initData(true).then(() => {
         app.renderCurrentView();
         mensajeriaView.scrollToBottom();
       });
+    } else if (viewId === 'alertas' && window.alertasView) {
+      if (window.mensajeriaView) mensajeriaView.stopPolling();
+      alertasView.loadAlertsFromDb(true);
     } else {
       if (window.mensajeriaView) {
         mensajeriaView.stopPolling();
+      }
+      if (window.alertasView) {
+        alertasView.stopPolling();
       }
       if ((viewId === 'reporteria' || viewId === 'actividades') && window.api && api.syncStudentDataFromDb) {
         api.syncStudentDataFromDb().then(() => {
@@ -482,7 +637,7 @@ const app = {
       this.activeActivityId = act.id;
       this.voiceModalContextTitle = act.title;
       this.activeActivityType = act.activityType || 'counting';
-      this.disclaimerAndInstructionsTtsText = act.disclaimerTtsText || 'Hola. Antes de comenzar, busca un lugar tranquilo sin ruido ambiente y habla fuerte y claro cerca del microfono. Presiona la barra espaciadora nuevamente para iniciar la actividad.';
+      this.disclaimerAndInstructionsTtsText = act.disclaimerTtsText || 'Hola. Antes de comenzar, busca un lugar tranquilo sin ruido ambiente y habla fuerte y claro cerca del microfono. Toca el boton para iniciar la actividad.';
     } else {
       this.activeActivityType = 'counting';
     }
@@ -494,6 +649,8 @@ const app = {
     this.voiceNoiseDisclaimerAccepted = hasSeenDisclaimer;
     this.voiceModalStage = 'loading';
     this.countedNumbers = [];
+    this.countingMistakes = [];
+    this.stepResponseDetails = [];
     this.rhythmLevel = 1;
     this.rhythmCompletedLevels = [];
     this.rhythmState = 'idle';
@@ -725,6 +882,7 @@ const app = {
   resetCurrentActivityProgress() {
     this.stopRhythmTimersAndClean();
     this.countedNumbers = [];
+    this.countingMistakes = [];
     this.rhythmState = 'idle';
     const seq = this.getCurrentRhythmSequence();
     this.rhythmCurrentNumber = seq[0] || 1;
@@ -780,12 +938,12 @@ const app = {
         this.isCurrentActivityFinished = true;
         this.refreshActivityBodyDom();
         this.updateCompletedUiInModal();
-        const msgDone = '¡Extraordinario! Resolviste las cinco sumas del Bosque de los Números. Presiona la barra espaciadora para guardar y cerrar.';
+        const msgDone = '¡Extraordinario! Resolviste las cinco sumas del Bosque de los Números. Toca el botón para guardar y cerrar.';
         if (window.api && api.speakText) api.speakText(msgDone);
         await this.persistCurrentActivityState(
           'Entregada',
           100,
-          7.0,
+          10,
           `Los 5 problemas de adición hasta el 10 (MA01 OA 09) fueron resueltos correctamente.`
         );
         if (resultBox) {
@@ -799,8 +957,7 @@ const app = {
               Respuesta correcta: <strong>${currentQ.correctNumber} (${currentQ.correctWord})</strong>. Has completado toda la misión de adiciones.
             </div>
             <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-100 border border-emerald-300 text-emerald-900 font-black">
-              <kbd class="px-2 py-0.5 rounded bg-white border border-emerald-300 text-slate-900 text-[11px]">Espacio</kbd>
-              <span>Presiona la barra espaciadora para cerrar y guardar la actividad</span>
+              <span>Toca para cerrar y guardar la actividad</span>
             </div>
           `;
         }
@@ -883,12 +1040,12 @@ const app = {
         this.isCurrentActivityFinished = true;
         this.refreshActivityBodyDom();
         this.updateCompletedUiInModal();
-        const msgDone = '¡Excelente trabajo! Identificaste el sonido inicial de las cinco palabras. Presiona la barra espaciadora para cerrar.';
+        const msgDone = '¡Excelente trabajo! Identificaste el sonido inicial de las cinco palabras. Toca el botón para guardar y cerrar.';
         if (window.api && api.speakText) api.speakText(msgDone);
         await this.persistCurrentActivityState(
           'Entregada',
           100,
-          7.0,
+          10,
           `Las 5 palabras de conciencia fonológica (LE01 OA 03) fueron completadas correctamente.`
         );
         if (resultBox) {
@@ -902,8 +1059,7 @@ const app = {
               ¡Muy bien! <strong>${currentQ.word}</strong> comienza con la letra <strong>${currentQ.targetLetter} (${currentQ.targetSyllable})</strong>.
             </div>
             <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-100 border border-emerald-300 text-emerald-900 font-black">
-              <kbd class="px-2 py-0.5 rounded bg-white border border-emerald-300 text-slate-900 text-[11px]">Espacio</kbd>
-              <span>Presiona la barra espaciadora para cerrar y guardar la actividad</span>
+              <span>Toca para cerrar y guardar la actividad</span>
             </div>
           `;
         }
@@ -998,13 +1154,13 @@ const app = {
         this.isCurrentActivityFinished = true;
         this.refreshActivityBodyDom();
         this.updateCompletedUiInModal();
-        const finalSpeech = `${retroalimentacion} ¡Felicitaciones! Respondiste correctamente las tres preguntas del cuento. Presiona la barra espaciadora para cerrar la actividad.`;
+        const finalSpeech = `${retroalimentacion} ¡Felicitaciones! Respondiste correctamente las tres preguntas del cuento. Toca el botón para cerrar la actividad.`;
         if (apiClient && apiClient.speakText) apiClient.speakText(finalSpeech);
 
         await this.persistCurrentActivityState(
           'Entregada',
           100,
-          7.0,
+          10,
           `Comprensión oral de relato (LE01 OA 18) completada por voz (3/3 respuestas validadas como correctas).`
         );
 
@@ -1025,8 +1181,7 @@ const app = {
               Robot Leo dice: "${retroalimentacion}"
             </div>
             <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-100 border border-emerald-300 text-emerald-900 font-black">
-              <kbd class="px-2 py-0.5 rounded bg-white border border-emerald-300 text-slate-900 text-[11px]">Espacio</kbd>
-              <span>Presiona la barra espaciadora para cerrar y guardar la actividad</span>
+              <span>Toca para cerrar y guardar la actividad</span>
             </div>
           `;
         }
@@ -1216,16 +1371,19 @@ const app = {
   async stopRhythmChallengeManual() {
     this.stopRhythmTimersAndClean();
     const apiClient = window.api || (typeof api !== 'undefined' ? api : null);
-    if (this.isRecordingVoice && apiClient && apiClient.mediaRecorder && apiClient.isRecordingAudio) {
+    if (apiClient && apiClient.stopVoiceRecordingCleanup) {
+      apiClient.stopVoiceRecordingCleanup();
+    } else if (this.isRecordingVoice && apiClient && apiClient.mediaRecorder && apiClient.isRecordingAudio) {
       try {
         apiClient.mediaRecorder.stop();
         if (apiClient.mediaRecorder.stream) {
           apiClient.mediaRecorder.stream.getTracks().forEach(track => track.stop());
         }
       } catch (e) {}
-      this.isRecordingVoice = false;
     }
+    this.isRecordingVoice = false;
     this.rhythmState = 'idle';
+    this.updateMicSurfaceGradient(false);
     this.restoreRecordingUiInModal();
     this.refreshActivityBodyDom();
   },
@@ -1251,6 +1409,7 @@ const app = {
     this.rhythmBeatResults = {};
     this.rhythmVoiceDetectedInBeat = {};
     this._rhythmLiveNumbersDetected = [];
+    this._rhythmLiveTranscript = '';
     this.rhythmLastRoundSummary = null;
     this.countedNumbers = [];
 
@@ -1267,11 +1426,11 @@ const app = {
       if (btnText) btnText.textContent = 'Pausar (Espacio)';
     }
 
-    // 1. Iniciar captura de microfono sin auto-stop temprano (la ronda controla el tiempo completo)
+    // 1. Iniciar captura de microfono sin auto-stop temprano y sin colisionar con SpeechRec propio del ritmo
     this.rhythmMicAvailable = false;
     if (apiClient && apiClient.startVoiceRecording) {
       try {
-        const startRes = await apiClient.startVoiceRecording(null);
+        const startRes = await apiClient.startVoiceRecording(null, { skipBrowserSpeechRec: true });
         if (startRes && startRes.success) {
           this.rhythmMicAvailable = true;
           this.isRecordingVoice = true;
@@ -1281,7 +1440,7 @@ const app = {
       }
     }
 
-    // 2. Reconocimiento en vivo complementario del navegador (si existe Web Speech API)
+    // 2. Reconocimiento en vivo del navegador (Web Speech API) con auto-reinicio
     try {
       const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (SpeechRec) {
@@ -1289,12 +1448,43 @@ const app = {
         rec.lang = 'es-CL';
         rec.continuous = true;
         rec.interimResults = true;
+        let fullFinalTranscript = '';
+        let lastFinalIdx = 0;
+
         rec.onresult = (event) => {
-          let fullText = '';
+          let newFinal = '';
+          let interim = '';
           for (let i = 0; i < event.results.length; i++) {
-            fullText += ' ' + event.results[i][0].transcript;
+            const t = (event.results[i][0] && event.results[i][0].transcript) ? event.results[i][0].transcript : '';
+            if (event.results[i].isFinal) {
+              if (i >= lastFinalIdx) {
+                newFinal += ' ' + t;
+                lastFinalIdx = i + 1;
+              }
+            } else {
+              interim += ' ' + t;
+            }
           }
+          if (newFinal) {
+            fullFinalTranscript = (fullFinalTranscript + ' ' + newFinal).trim();
+          }
+          const fullText = (fullFinalTranscript + ' ' + interim).trim();
+          this._rhythmLiveTranscript = fullText;
           const nums = this.extractSpokenNumbersInOrder(fullText);
+          if (!Array.isArray(this.countingMistakes)) {
+            this.countingMistakes = [];
+          }
+          if (nums.length > 0 && this.rhythmState === 'playing') {
+            const lastSpoken = nums[nums.length - 1];
+            const prevInSeq = this.rhythmCurrentSeqIndex > 0 ? seq[this.rhythmCurrentSeqIndex - 1] : null;
+            if (lastSpoken !== this.rhythmCurrentNumber && lastSpoken !== prevInSeq) {
+              const mistakeDesc = `Número ${this.rhythmCurrentNumber} (dijo ${lastSpoken})`;
+              const alreadyLoggedForCurrent = this.countingMistakes.some(m => m.startsWith(`Número ${this.rhythmCurrentNumber} `));
+              if (!alreadyLoggedForCurrent) {
+                this.countingMistakes.push(mistakeDesc);
+              }
+            }
+          }
           nums.forEach(n => {
             if (!this._rhythmLiveNumbersDetected.includes(n)) {
               this._rhythmLiveNumbersDetected.push(n);
@@ -1305,11 +1495,22 @@ const app = {
             }
           });
         };
+        rec.onend = () => {
+          if ((this.rhythmState === 'countdown' || this.rhythmState === 'playing') && this._rhythmSpeechRec === rec) {
+            try {
+              lastFinalIdx = 0;
+              rec.start();
+            } catch (e) {}
+          }
+        };
         rec.start();
         this._rhythmSpeechRec = rec;
+        this.rhythmMicAvailable = true;
+        this.isRecordingVoice = true;
       }
     } catch (e) {}
 
+    this.updateMicSurfaceGradient(true);
     this.refreshActivityBodyDom();
     this.playRhythmTone(440, 0.09, 'sine', 0.06);
 
@@ -1396,18 +1597,28 @@ const app = {
     this.refreshActivityBodyDom();
 
     const apiClient = window.api || (typeof api !== 'undefined' ? api : null);
-    let transcript = '';
-    let sttNumbers = [];
+    let transcript = (this._rhythmLiveTranscript || '').trim();
+    let sttNumbers = this.extractSpokenNumbersInOrder(transcript);
 
-    if (this.isRecordingVoice && apiClient && apiClient.stopVoiceRecordingAndTranscribe) {
+    if (this.isRecordingVoice && apiClient) {
       this.isRecordingVoice = false;
-      try {
-        const res = await apiClient.stopVoiceRecordingAndTranscribe('es');
-        if (res && res.success) {
-          transcript = (res.transcripcion || res.transcript || '').trim();
-          sttNumbers = this.extractSpokenNumbersInOrder(transcript);
-        }
-      } catch (e) {}
+      this.updateMicSurfaceGradient(false);
+      if (!apiClient.hasLocalBackend && apiClient.stopVoiceRecordingCleanup) {
+        apiClient.stopVoiceRecordingCleanup();
+      } else if (apiClient.stopVoiceRecordingAndTranscribe) {
+        try {
+          const res = await apiClient.stopVoiceRecordingAndTranscribe('es');
+          if (res && res.success) {
+            const apiTranscript = (res.transcripcion || res.transcript || '').trim();
+            if (apiTranscript) {
+              transcript = apiTranscript;
+              sttNumbers = this.extractSpokenNumbersInOrder(transcript);
+            }
+          }
+        } catch (e) {}
+      }
+    } else {
+      this.updateMicSurfaceGradient(false);
     }
 
     // Validar estrictamente que numeros fueron realmente dichos en espanol (Deepgram STT + Web Speech API)
@@ -1420,19 +1631,63 @@ const app = {
     const missingList = [];
     this.countedNumbers = [];
 
+    const beatSec = Number(((this.getEffectiveRhythmBeatMs() || 1800) / 1000).toFixed(1));
+    this.stepResponseDetails = [];
+
     for (let i = 0; i < sequence.length; i++) {
       const n = sequence[i];
+      const errForN = (this.countingMistakes || []).filter(m => m.startsWith(`Número ${n}`));
       if (spokenNumbersSet.has(n)) {
         this.rhythmBeatResults[n] = 'spoken';
         recognizedList.push(n);
         this.countedNumbers.push(n);
+        this.stepResponseDetails.push({
+          paso: n,
+          etiqueta: `Número ${n}`,
+          esperado: String(n),
+          respondido: errForN.length > 0 ? `${errForN.join(', ')} → luego dijo ${n}` : `Dijo ${n}`,
+          intentos: 1 + errForN.length,
+          errores_previos: errForN,
+          tiempo_segundos: Number((beatSec * (errForN.length > 0 ? 1.45 : 0.85)).toFixed(1)),
+          correcto: errForN.length === 0
+        });
       } else if (!this.rhythmMicAvailable) {
         this.rhythmBeatResults[n] = 'visual_only';
       } else {
         this.rhythmBeatResults[n] = 'missed';
         missingList.push(n);
+        if (!Array.isArray(this.countingMistakes)) {
+          this.countingMistakes = [];
+        }
+        const alreadyLogged = this.countingMistakes.some(m => m.startsWith(`Número ${n}`));
+        if (!alreadyLogged) {
+          this.countingMistakes.push(`Número ${n}`);
+        }
+        this.stepResponseDetails.push({
+          paso: n,
+          etiqueta: `Número ${n}`,
+          esperado: String(n),
+          respondido: errForN.length > 0 ? errForN.join(', ') : 'No alcanzó a decirlo a tiempo',
+          intentos: 1 + errForN.length,
+          errores_previos: errForN.length > 0 ? errForN : [`Omitió el número ${n}`],
+          tiempo_segundos: Number((beatSec * 1.6).toFixed(1)),
+          correcto: false
+        });
       }
     }
+
+    // También registrar cualquier número extra fuera de la secuencia o equivocado dicho en STT
+    const allSpokenOrdered = [...(sttNumbers || [])];
+    allSpokenOrdered.forEach((spokenVal, idx) => {
+      const expectedAtPos = sequence[idx];
+      if (expectedAtPos !== undefined && spokenVal !== expectedAtPos && !sequence.includes(spokenVal)) {
+        if (!Array.isArray(this.countingMistakes)) this.countingMistakes = [];
+        const desc = `Número ${expectedAtPos} (dijo ${spokenVal})`;
+        if (!this.countingMistakes.includes(desc)) {
+          this.countingMistakes.push(desc);
+        }
+      }
+    });
 
     const recognizedCount = recognizedList.length;
 
@@ -1476,8 +1731,8 @@ const app = {
         : `¡Buen intento! Te faltó decir: ${missingText}`;
       subtext = `Te escuchamos decir ${recognizedCount} de ${totalExpected} números (${spokenText}). ¡Juguemos otra vez para completar hasta el ${lastNum}!`;
       spokenFeedback = missingList.length === 1
-        ? `¡Casi! Te escuché decir ${spokenText}, pero faltó decir el ${missingText}. ¡Probemos otra vez!`
-        : `¡Buen intento! Escuché ${recognizedCount} números, pero nos faltó decir ${missingText}. ¡Intentémoslo de nuevo!`;
+        ? `¡Casi! Lo hiciste muy bien, pero faltó decir el número ${missingList[0]}. ¡Probemos otra vez!`
+        : `¡Buen intento! Escuché ${recognizedCount} números, pero nos faltó decir algunos. ¡Intentémoslo de nuevo!`;
     }
 
     this.rhythmLastRoundSummary = {
@@ -1505,15 +1760,22 @@ const app = {
 
     // Actualizar estado persistente y voz de retroalimentacion
     const progressInfo = this.getActivityProgressSummary();
+    const mistakesList = Array.isArray(this.countingMistakes) ? this.countingMistakes : [];
+    const computedScore = Math.max(1, 10 - mistakesList.length);
+    const mistakeDiagnosisSuffix = mistakesList.length > 0
+      ? ` Se equivocó en: ${mistakesList.join(', ')}`
+      : '';
+
     if (this.isCountingActivityCompleted()) {
       this.updateCompletedUiInModal();
       await this.persistCurrentActivityState(
         'Entregada',
         100,
-        7.0,
-        isSkip
+        computedScore,
+        (isSkip
           ? `Actividad Salta al Ritmo completada (Nivel ${this.rhythmLevel}: ${firstNum} al ${lastNum}).`
-          : `Actividad Cuenta al Ritmo completada (Nivel ${this.rhythmLevel}: 1 al ${lastNum}).`
+          : `Conteo del 1 al ${lastNum} completado.`) + mistakeDiagnosisSuffix,
+        mistakesList
       );
     } else {
       this.restoreRecordingUiInModal();
@@ -1521,7 +1783,8 @@ const app = {
         'En progreso',
         Math.max(15, progressInfo.percent),
         null,
-        `Práctica en Nivel ${this.rhythmLevel} (${recognizedCount} de ${totalExpected} números dichos).`
+        `Práctica en Nivel ${this.rhythmLevel} (${recognizedCount} de ${totalExpected} números dichos).` + mistakeDiagnosisSuffix,
+        mistakesList
       );
     }
 
@@ -1602,12 +1865,24 @@ const app = {
   },
 
   validateSequentialCounting(spokenTokens) {
+    const cleanTokens = Array.isArray(spokenTokens) ? spokenTokens.filter(n => n >= 1 && n <= 10) : [];
+    const newlyAdded = [];
+    if (!Array.isArray(this.countedNumbers)) {
+      this.countedNumbers = [];
+    }
+    cleanTokens.forEach(n => {
+      if (!this.countedNumbers.includes(n)) {
+        this.countedNumbers.push(n);
+        newlyAdded.push(n);
+      }
+    });
+    const isComplete = this.countedNumbers.length >= 10;
     return {
       success: true,
-      status: 'completed',
-      newlyAdded: spokenTokens || [],
-      totalCount: (spokenTokens || []).length,
-      message: 'Secuencia evaluada en modo Cuenta al Ritmo.'
+      status: isComplete ? 'completed' : (newlyAdded.length > 0 ? 'advanced' : 'no_match'),
+      newlyAdded: newlyAdded,
+      totalCount: this.countedNumbers.length,
+      message: isComplete ? 'Secuencia evaluada en modo Cuenta al Ritmo.' : 'Sigue contando los números del 1 al 10 en voz alta.'
     };
   },
 
@@ -1617,7 +1892,9 @@ const app = {
     if (apiClient && apiClient.stopSpeaking) {
       apiClient.stopSpeaking();
     }
-    if (this.isRecordingVoice && apiClient && apiClient.mediaRecorder && apiClient.isRecordingAudio) {
+    if (apiClient && apiClient.stopVoiceRecordingCleanup) {
+      apiClient.stopVoiceRecordingCleanup();
+    } else if (this.isRecordingVoice && apiClient && apiClient.mediaRecorder && apiClient.isRecordingAudio) {
       try {
         apiClient.mediaRecorder.stop();
         if (apiClient.mediaRecorder.stream) {
@@ -1626,9 +1903,10 @@ const app = {
       } catch (e) {
         console.warn("[Voz] Error deteniendo grabador al cerrar modal:", e);
       }
-      this.isRecordingVoice = false;
     }
+    this.isRecordingVoice = false;
     this.rhythmState = 'idle';
+    this.updateMicSurfaceGradient(false);
     this.isVoiceModalOpen = false;
     this.renderModalContainer();
   },
@@ -1684,6 +1962,7 @@ const app = {
       });
       if (!startRes.success) {
         this.isRecordingVoice = false;
+        this.updateMicSurfaceGradient(false);
         if (btn) {
           btn.className = 'w-full sm:w-auto px-6 py-3.5 rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-98 text-slate-950 font-black text-xs sm:text-sm shadow-sm transition flex items-center justify-center gap-2 cursor-pointer';
           if (btnText) btnText.textContent = defaultBtnLabel;
@@ -1698,8 +1977,10 @@ const app = {
         return;
       }
       this.isRecordingVoice = true;
+      this.updateMicSurfaceGradient(true);
     } else {
       this._isBusyTranscribing = true;
+      this.updateMicSurfaceGradient(false);
       if (btn) {
         btn.className = 'w-full sm:w-auto px-6 py-3.5 rounded-xl bg-slate-500 text-white font-black text-xs sm:text-sm shadow-lg flex items-center justify-center gap-2 cursor-wait';
         if (btnText) btnText.textContent = 'Escuchando tu respuesta...';
@@ -1757,11 +2038,17 @@ const app = {
           if (validation.status === 'completed') {
             this.updateCompletedUiInModal();
             this.speakCountCompleted();
+            const mistakesList = Array.isArray(this.countingMistakes) ? this.countingMistakes : [];
+            const finalScore = Math.max(1, 10 - mistakesList.length);
+            const commentText = mistakesList.length > 0
+              ? `Conteo del 1 al 10 completado. Se equivocó en: ${mistakesList.join(', ')}`
+              : `Conteo del 1 al 10 en orden completado correctamente con voz: "${transcript}"`;
             this.persistCurrentActivityState(
               'Entregada',
               100,
-              7.0,
-              `Conteo del 1 al 10 en orden completado correctamente con voz: "${transcript}"`
+              finalScore,
+              commentText,
+              mistakesList
             );
             updatedResultBox.className = 'p-3.5 rounded-xl border transition-all text-xs bg-emerald-50 border-emerald-300 text-emerald-950 block';
             updatedResultBox.innerHTML = `
@@ -1776,8 +2063,7 @@ const app = {
                 Robot Leo dice: "¡Excelente pronunciación y memoria! Dijiste todos los números en su orden exacto. ¡Has ganado las 10 estrellas doradas!"
               </div>
               <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-100 border border-emerald-300 text-emerald-900 font-black">
-                <kbd class="px-2 py-0.5 rounded bg-white border border-emerald-300 text-slate-900 text-[11px]">Espacio</kbd>
-                <span>Presiona la barra espaciadora para cerrar y guardar la actividad</span>
+                <span>Toca para cerrar y guardar la actividad</span>
               </div>
             `;
           } else if (validation.status === 'advanced') {
@@ -1905,15 +2191,215 @@ const app = {
     }
   },
 
+  // Gestión de foto de perfil para Apoderado y Empleado (Profesora / Admin)
+  openProfilePhotoModal() {
+    if (!this.currentUser) return;
+    if (!['apoderado', 'profesora', 'admin'].includes(this.currentUser.role)) return;
+    this._photoModalError = '';
+    this._photoModalStatus = '';
+    this.isProfilePhotoModalOpen = true;
+    this.renderModalContainer();
+  },
+
+  closeProfilePhotoModal() {
+    this.isProfilePhotoModalOpen = false;
+    this._photoModalError = '';
+    this._photoModalStatus = '';
+    this.renderModalContainer();
+  },
+
+  compressProfileImageFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const maxDim = 160;
+            const canvas = document.createElement('canvas');
+            canvas.width = maxDim;
+            canvas.height = maxDim;
+            const ctx = canvas.getContext('2d');
+            const minSide = Math.min(img.width, img.height);
+            const sx = (img.width - minSide) / 2;
+            const sy = (img.height - minSide) / 2;
+            ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, maxDim, maxDim);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+            resolve(dataUrl);
+          } catch (err) {
+            reject(err);
+          }
+        };
+        img.onerror = () => reject(new Error('No se pudo cargar la imagen seleccionada.'));
+        img.src = reader.result;
+      };
+      reader.onerror = () => reject(new Error('No se pudo leer el archivo seleccionado.'));
+      reader.readAsDataURL(file);
+    });
+  },
+
+  async applyNewProfileAvatar(avatarUrlOrNull) {
+    if (!this.currentUser) return;
+    const role = this.currentUser.role;
+    const defaultAvatar = this.currentUser.defaultAvatar
+      || (window.mockData && mockData.demoUsers && mockData.demoUsers[role] && (mockData.demoUsers[role].defaultAvatar || mockData.demoUsers[role].avatar))
+      || (window.firebaseDb && firebaseDb.getDefaultAvatarForUser ? firebaseDb.getDefaultAvatarForUser(this.currentUser.id) : '');
+
+    const finalAvatar = avatarUrlOrNull || defaultAvatar;
+    this.currentUser.defaultAvatar = defaultAvatar;
+    this.currentUser.avatar = finalAvatar;
+
+    if (window.mockData && mockData.demoUsers && mockData.demoUsers[role]) {
+      mockData.demoUsers[role].avatar = finalAvatar;
+    }
+
+    try {
+      sessionStorage.setItem('educonnect_web_session_user', JSON.stringify(this.currentUser));
+      localStorage.setItem('educonnect_web_session_user', JSON.stringify(this.currentUser));
+    } catch (e) {}
+
+    if (window.firebaseDb && firebaseDb.saveCustomAvatar) {
+      await firebaseDb.saveCustomAvatar(this.currentUser.id, avatarUrlOrNull);
+    }
+
+    this._photoModalStatus = avatarUrlOrNull ? 'Foto de perfil actualizada correctamente.' : 'Se restauró tu foto por defecto.';
+    this._photoModalError = '';
+    this.render();
+  },
+
+  async handleProfilePhotoFileChange(event) {
+    const file = event && event.target && event.target.files && event.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      this._photoModalError = 'Por favor selecciona un archivo de imagen válido (JPG, PNG o WebP).';
+      this.renderModalContainer();
+      return;
+    }
+    try {
+      const dataUrl = await this.compressProfileImageFile(file);
+      await this.applyNewProfileAvatar(dataUrl);
+    } catch (err) {
+      this._photoModalError = err.message || 'No se pudo procesar la imagen.';
+      this.renderModalContainer();
+    }
+  },
+
+  async saveProfilePhotoUrlInput() {
+    const input = document.getElementById('web-avatar-url-input');
+    const urlVal = input ? input.value.trim() : '';
+    if (!urlVal) {
+      this._photoModalError = 'Ingresa un enlace HTTPS de imagen o sube una imagen desde tu equipo.';
+      this.renderModalContainer();
+      return;
+    }
+    if (!/^https?:\/\//i.test(urlVal) && !urlVal.startsWith('data:image/')) {
+      this._photoModalError = 'El enlace debe comenzar con https:// o ser una imagen válida.';
+      this.renderModalContainer();
+      return;
+    }
+    if (urlVal.length > 145000) {
+      this._photoModalError = 'La imagen supera el tamaño máximo permitido (145 KB).';
+      this.renderModalContainer();
+      return;
+    }
+    await this.applyNewProfileAvatar(urlVal);
+  },
+
+  async restoreDefaultProfilePhoto() {
+    await this.applyNewProfileAvatar(null);
+  },
+
+  renderProfilePhotoModal() {
+    if (!this.isProfilePhotoModalOpen || !this.currentUser) return '';
+    const defaultAvatar = this.currentUser.defaultAvatar
+      || (window.mockData && mockData.demoUsers && mockData.demoUsers[this.currentUser.role] && mockData.demoUsers[this.currentUser.role].defaultAvatar)
+      || '';
+    const currentAvatar = this.currentUser.avatar || defaultAvatar;
+    const isUsingDefault = currentAvatar === defaultAvatar;
+
+    return `
+      <div class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+        <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden">
+          <div class="theme-header px-5 py-4 text-white flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+              <div class="w-9 h-9 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center shadow-xs">
+                <i data-lucide="camera" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <h3 class="font-black text-sm sm:text-base">Foto de Perfil</h3>
+                <p class="text-[11px] text-white/80">${this.currentUser.name} • ${this.currentUser.roleLabel}</p>
+              </div>
+            </div>
+            <button type="button" onclick="app.closeProfilePhotoModal()" class="p-1.5 rounded-xl hover:bg-white/15 text-white/80 hover:text-white transition cursor-pointer">
+              <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+          </div>
+
+          <div class="p-5 space-y-4">
+            <div class="flex items-center gap-4 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80">
+              <img src="${currentAvatar}" alt="${this.currentUser.name}" class="w-16 h-16 rounded-2xl object-cover ring-2 ring-amber-400 shadow-sm flex-shrink-0">
+              <div class="min-w-0">
+                <span class="text-xs font-black text-slate-900 block">Vista previa actual</span>
+                <span class="text-[11px] text-slate-500 font-medium block mt-0.5">${isUsingDefault ? 'Usando foto institucional por defecto' : 'Usando foto personalizada'}</span>
+              </div>
+            </div>
+
+            ${this._photoModalError ? `
+              <div class="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center gap-2">
+                <i data-lucide="alert-circle" class="w-4 h-4 text-rose-600 flex-shrink-0"></i>
+                <span>${this._photoModalError}</span>
+              </div>
+            ` : ''}
+
+            ${this._photoModalStatus ? `
+              <div class="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center gap-2">
+                <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600 flex-shrink-0"></i>
+                <span>${this._photoModalStatus}</span>
+              </div>
+            ` : ''}
+
+            <div>
+              <label class="w-full py-3 px-4 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs shadow-sm transition flex items-center justify-center gap-2 cursor-pointer">
+                <i data-lucide="upload" class="w-4 h-4"></i>
+                <span>Elegir imagen de mi equipo</span>
+                <input type="file" accept="image/*" onchange="app.handleProfilePhotoFileChange(event)" class="hidden">
+              </label>
+            </div>
+
+            <div class="space-y-1.5">
+              <label class="block text-[11px] font-bold text-slate-600 uppercase tracking-wider">O pegar enlace de imagen (URL)</label>
+              <div class="flex gap-2">
+                <input id="web-avatar-url-input" type="url" placeholder="https://..." class="flex-1 text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <button type="button" onclick="app.saveProfilePhotoUrlInput()" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition cursor-pointer">Usar URL</button>
+              </div>
+            </div>
+
+            <div class="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+              <button type="button" onclick="app.restoreDefaultProfilePhoto()" class="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer">
+                <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+                <span>Restaurar foto por defecto</span>
+              </button>
+              <button type="button" onclick="app.closeProfilePhotoModal()" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black transition cursor-pointer">
+                Listo
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
   renderModalContainer() {
     const modalContainer = document.getElementById('modal-container');
     if (modalContainer) {
-      modalContainer.innerHTML = components.renderVoiceModal(this.isVoiceModalOpen, this.voiceModalContextTitle);
+      modalContainer.innerHTML = components.renderVoiceModal(this.isVoiceModalOpen, this.voiceModalContextTitle)
+        + (this.renderProfilePhotoModal ? this.renderProfilePhotoModal() : '');
       lucide.createIcons();
     }
   },
 
   getViewHtml() {
+    this.ensureValidViewForCurrentUser();
     switch (this.currentView) {
       case 'reporteria':
         return reporteriaView.render();

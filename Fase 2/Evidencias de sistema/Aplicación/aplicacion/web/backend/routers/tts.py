@@ -21,21 +21,8 @@ class TTSRequest(BaseModel):
     voice_id: Optional[str] = None
 
 def get_elevenlabs_api_key() -> str:
-    """Lee la clave de ElevenLabs desde variable de entorno o desde elevenlabs_secret.txt de forma segura."""
-    api_key = os.getenv("ELEVENLABS_API_KEY", "").strip()
-    if not api_key:
-        secret_path = os.path.join(BASE_DIR, "elevenlabs_secret.txt")
-        if os.path.exists(secret_path):
-            try:
-                with open(secret_path, "r", encoding="utf-8") as f:
-                    for line in f:
-                        clean = line.strip()
-                        if clean and not clean.startswith("#"):
-                            api_key = clean
-                            break
-            except Exception as e:
-                print(f"[TTS] Error leyendo elevenlabs_secret.txt: {e}")
-    return api_key
+    """Lee la clave de ElevenLabs exclusivamente desde variable de entorno del servidor."""
+    return os.getenv("ELEVENLABS_API_KEY", "").strip()
 
 def get_cache_file_path(text: str, voice_id: str) -> str:
     """Genera una ruta de archivo unico en cache para ahorrar caracteres y asegurar latencia cero."""
